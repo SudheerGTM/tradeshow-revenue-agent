@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { VoiceRecorder } from "@/components/VoiceRecorder";
 import { ConversationIntelligence } from "@/components/ConversationIntelligence";
 import { EnrichmentPanel } from "@/components/EnrichmentPanel";
+import { LeadScorePanel } from "@/components/LeadScorePanel";
 import type { Lead } from "@/db/schema";
 
 const STATUS_COLORS: Record<string, "blue" | "yellow" | "green" | "red"> = {
@@ -120,6 +121,9 @@ export function LeadDetailClient({ lead, history, eventName, creatorName, availa
               rows={4}
             />
           </div>
+
+          {/* Lead Score */}
+          <LeadScorePanel leadId={lead.id} />
 
           {/* Voice Notes */}
           <VoiceRecorder leadId={lead.id} />

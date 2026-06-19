@@ -353,6 +353,65 @@ export const contactEnrichment = pgTable(
   ]
 );
 
+// ─── Lead Scores ─────────────────────────────────────────────────────────────
+
+export const scoreClassificationEnum = pgEnum("score_classification", [
+  "hot", "warm", "cold", "needs_review",
+]);
+
+export const scoreStatusEnum = pgEnum("score_status", [
+  "completed", "failed", "needs_review",
+]);
+
+export const leadScores = pgTable(
+  "lead_scores",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+    eventId: uuid("event_id").references(() => events.id, { onDelete: "set null" }),
+    leadId: uuid("lead_id").notNull().references(() => leads.id, { onDelete: "cascade" }),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+
+    score: numeric("score", { precision: 5, scale: 2 }).notNull().default("0"),
+    classification: scoreClassificationEnum("classification").notNull().default("cold"),
+
+    companyFitScore:   numeric("company_fit_score",   { precision: 5, scale: 2 }).notNull().default("0"),
+    authorityScore:    numeric("authority_score",      { precision: 5, scale: 2 }).notNull().default("0"),
+    needScore:         numeric("need_score",           { precision: 5, scale: 2 }).notNull().default("0"),
+    urgencyScore:      numeric("urgency_score",        { precision: 5, scale: 2 }).notNull().default("0"),
+    engagementScore:   numeric("engagement_score",     { precision: 5, scale: 2 }).notNull().default("0"),
+    dataQualityScore:  numeric("data_quality_score",   { precision: 5, scale: 2 }).notNull().default("0"),
+
+    estimatedOpportunityValue: numeric("estimated_opportunity_value", { precision: 12, scale: 2 }),
+    estimatedCloseProbability:  numeric("estimated_close_probability",  { precision: 5, scale: 4 }),
+    expectedRevenue:            numeric("expected_revenue",             { precision: 12, scale: 2 }),
+
+    scoreExplanation:     text("score_explanation"),
+    scoreDrivers:         jsonb("score_drivers"),
+    risks:                jsonb("risks"),
+    recommendedNextAction: text("recommended_next_action"),
+
+    confidenceScore:   numeric("confidence_score", { precision: 5, scale: 2 }),
+    needsHumanReview:  boolean("needs_human_review").notNull().default(false),
+
+    modelUsed:       varchar("model_used", { length: 200 }),
+    rawAiResponse:   jsonb("raw_ai_response"),
+
+    status:        scoreStatusEnum("status").notNull().default("completed"),
+    failureReason: text("failure_reason"),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("ls_tenant_idx").on(t.tenantId),
+    index("ls_lead_idx").on(t.leadId),
+    index("ls_classification_idx").on(t.tenantId, t.classification),
+    index("ls_score_idx").on(t.tenantId, t.score),
+    index("ls_created_idx").on(t.tenantId, t.createdAt),
+  ]
+);
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type Tenant = typeof tenants.$inferSelect;
@@ -382,3 +441,7 @@ export type InsightStatus = "completed" | "failed" | "needs_review";
 export type CompanyEnrichment = typeof companyEnrichment.$inferSelect;
 export type ContactEnrichment = typeof contactEnrichment.$inferSelect;
 export type EnrichmentStatus = "not_enriched" | "enriched" | "partially_enriched" | "failed" | "needs_review";
+export type LeadScore = typeof leadScores.$inferSelect;
+export type NewLeadScore = typeof leadScores.$inferInsert;
+export type ScoreClassification = "hot" | "warm" | "cold" | "needs_review";
+export type ScoreStatus = "completed" | "failed" | "needs_review";

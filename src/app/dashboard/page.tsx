@@ -2,11 +2,11 @@ import { auth } from "@/lib/auth";
 import { getTenantById } from "@/lib/tenant";
 import { cookies } from "next/headers";
 import { db, schema } from "@/db";
-import { eq, sql, isNull, and } from "drizzle-orm";
+import { eq, sql, isNull, and, desc } from "drizzle-orm";
 import {
   Users, Star, Mail, Mic, FileText, CheckCircle, XCircle, Clock,
   Brain, AlertTriangle, Zap, Package, Sparkles, Building2, TrendingUp,
-  CalendarDays, BarChart2,
+  CalendarDays, BarChart2, Flame, Thermometer, Snowflake,
 } from "lucide-react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/Badge";
@@ -28,6 +28,8 @@ export default async function DashboardPage() {
   let enrichStats = { leadsEnriched: 0, companiesEnriched: 0, successRate: 0, total: 0 };
   let topIndustries: string[] = [];
   let topCompanySizes: string[] = [];
+  let scoreStats = { hot: 0, warm: 0, cold: 0, needsReview: 0, totalPipeline: 0, expectedRevenue: 0 };
+  let topScoredLeads: { id: string; firstName: string; lastName: string | null; companyName: string; score: string; classification: string; expectedRevenue: string | null }[] = [];
 
   if (session?.user?.tenantId) {
     const tenantId = session.user.tenantId;
@@ -138,6 +140,48 @@ export default async function DashboardPage() {
       .orderBy(sql`count(*) desc`)
       .limit(5);
     topCompanySizes = sizeRows.map(r => r.range).filter(Boolean) as string[];
+
+    // Lead scoring stats
+    const scoreByClass = await db
+      .select({ classification: schema.leadScores.classification, count: sql<number>`count(distinct lead_id)::int` })
+      .from(schema.leadScores)
+      .where(eq(schema.leadScores.tenantId, tenantId))
+      .groupBy(schema.leadScores.classification);
+
+    for (const r of scoreByClass) {
+      if (r.classification === "hot") scoreStats.hot = r.count;
+      else if (r.classification === "warm") scoreStats.warm = r.count;
+      else if (r.classification === "cold") scoreStats.cold = r.count;
+      else if (r.classification === "needs_review") scoreStats.needsReview = r.count;
+    }
+
+    const [pipelineRow] = await db
+      .select({
+        totalPipeline: sql<string>`sum(estimated_opportunity_value)`,
+        expectedRevenue: sql<string>`sum(expected_revenue)`,
+      })
+      .from(schema.leadScores)
+      .where(eq(schema.leadScores.tenantId, tenantId));
+
+    scoreStats.totalPipeline = Math.round(parseFloat(pipelineRow?.totalPipeline ?? "0") || 0);
+    scoreStats.expectedRevenue = Math.round(parseFloat(pipelineRow?.expectedRevenue ?? "0") || 0);
+
+    // Top scored leads
+    topScoredLeads = await db
+      .selectDistinctOn([schema.leadScores.leadId], {
+        id: schema.leads.id,
+        firstName: schema.leads.firstName,
+        lastName: schema.leads.lastName,
+        companyName: schema.leads.companyName,
+        score: schema.leadScores.score,
+        classification: schema.leadScores.classification,
+        expectedRevenue: schema.leadScores.expectedRevenue,
+      })
+      .from(schema.leadScores)
+      .innerJoin(schema.leads, eq(schema.leadScores.leadId, schema.leads.id))
+      .where(and(eq(schema.leadScores.tenantId, tenantId), eq(schema.leadScores.classification, "hot")))
+      .orderBy(schema.leadScores.leadId, desc(schema.leadScores.createdAt))
+      .limit(5) as typeof topScoredLeads;
   }
 
   const tenantName = tenant?.name ?? (session?.user?.role === "platform_admin" ? "Platform Overview" : slug);
@@ -236,6 +280,54 @@ export default async function DashboardPage() {
                 </div>
               )}
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Lead Scoring row */}
+      <div>
+        <SectionHeader title="Lead Scoring" icon={Star} href="/leads" />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-3">
+          <KpiCard icon={Flame}       label="Hot Leads"         value={scoreStats.hot}          color="danger"    href="/leads?classification=hot" />
+          <KpiCard icon={Thermometer} label="Warm Leads"        value={scoreStats.warm}         color="warning"   href="/leads?classification=warm" />
+          <KpiCard icon={Snowflake}   label="Cold Leads"        value={scoreStats.cold}         color="blue"      href="/leads?classification=cold" />
+          <KpiCard icon={AlertTriangle} label="Needs Review"    value={scoreStats.needsReview}  color="turquoise" href="/leads?classification=needs_review" />
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
+          <div className="grid grid-cols-2 gap-4">
+            <KpiCard icon={TrendingUp} label="Estimated Pipeline" value={scoreStats.totalPipeline > 0 ? `£${(scoreStats.totalPipeline / 1000).toFixed(0)}k` : "—"} color="blue" href="/leads" />
+            <KpiCard icon={Zap}        label="Expected Revenue"   value={scoreStats.expectedRevenue > 0 ? `£${(scoreStats.expectedRevenue / 1000).toFixed(0)}k` : "—"} color="success" href="/leads" />
+          </div>
+          {/* Top Hot Leads */}
+          <div className="bg-white rounded-xl border border-[#E2E8F0] p-4 shadow-sm">
+            <div className="flex items-center gap-2 mb-3">
+              <Flame className="w-4 h-4 text-[#DC2626]" />
+              <p className="text-xs font-semibold text-[#475569] uppercase tracking-wider">Top Hot Leads</p>
+            </div>
+            {topScoredLeads.length === 0 ? (
+              <p className="text-xs text-[#94A3B8]">No hot leads yet — generate scores to see them here</p>
+            ) : (
+              <div className="space-y-2">
+                {topScoredLeads.map((lead) => (
+                  <Link key={lead.id} href={`/leads/${lead.id}`} className="flex items-center gap-2 group">
+                    <div className="w-8 h-8 rounded-lg bg-[#fee2e2] flex items-center justify-center shrink-0 text-xs font-bold text-[#DC2626]">
+                      {Math.round(parseFloat(lead.score))}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-[#0F172A] group-hover:text-[#0F4C81] truncate">
+                        {lead.firstName} {lead.lastName ?? ""}
+                      </p>
+                      <p className="text-[11px] text-[#94A3B8] truncate">{lead.companyName}</p>
+                    </div>
+                    {lead.expectedRevenue && (
+                      <span className="text-[11px] font-medium text-[#16A34A] shrink-0">
+                        £{parseFloat(lead.expectedRevenue).toLocaleString("en-GB", { maximumFractionDigits: 0 })}
+                      </span>
+                    )}
+                  </Link>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>
