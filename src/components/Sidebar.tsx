@@ -12,6 +12,8 @@ import {
   Building2,
   ChevronRight,
   ShieldCheck,
+  CalendarDays,
+  UserPlus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -24,17 +26,19 @@ interface NavItem {
 }
 
 const NAV: NavItem[] = [
-  { href: "/dashboard",         label: "Dashboard",     icon: LayoutDashboard, release: 1 },
-  { href: "/admin/tenants",     label: "Tenants",       icon: Building2,       release: 2, roles: ["platform_admin"] },
-  { href: "/admin/users",       label: "Users",         icon: ShieldCheck,     release: 2, roles: ["platform_admin", "tenant_admin", "manager"] },
-  { href: "/dashboard/leads",   label: "Leads",         icon: Users,           release: 3 },
-  { href: "/dashboard/conversations", label: "Conversations", icon: Mic,       release: 4 },
-  { href: "/dashboard/follow-ups",    label: "Follow-ups",    icon: Mail,      release: 5 },
-  { href: "/dashboard/analytics",     label: "Analytics",     icon: BarChart2, release: 5 },
-  { href: "/settings/tenant",   label: "Settings",      icon: Settings,        release: 2 },
+  { href: "/dashboard",       label: "Dashboard",    icon: LayoutDashboard, release: 1 },
+  { href: "/leads",           label: "Leads",        icon: Users,           release: 3 },
+  { href: "/leads/new",       label: "Capture Lead", icon: UserPlus,        release: 3 },
+  { href: "/events",          label: "Events",       icon: CalendarDays,    release: 3 },
+  { href: "/admin/tenants",   label: "Tenants",      icon: Building2,       release: 2, roles: ["platform_admin"] },
+  { href: "/admin/users",     label: "Users",        icon: ShieldCheck,     release: 2, roles: ["platform_admin", "tenant_admin", "manager"] },
+  { href: "/conversations",   label: "Conversations",icon: Mic,             release: 4 },
+  { href: "/follow-ups",      label: "Follow-ups",   icon: Mail,            release: 5 },
+  { href: "/analytics",       label: "Analytics",    icon: BarChart2,       release: 5 },
+  { href: "/settings/tenant", label: "Settings",     icon: Settings,        release: 2 },
 ];
 
-const CURRENT_RELEASE = 2;
+const CURRENT_RELEASE = 3;
 
 export function Sidebar({ role }: { role: string }) {
   const pathname = usePathname();
