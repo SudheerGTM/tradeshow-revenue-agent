@@ -2,8 +2,8 @@ import { auth } from "@/lib/auth";
 import { getTenantById } from "@/lib/tenant";
 import { cookies } from "next/headers";
 import { db, schema } from "@/db";
-import { eq, sql } from "drizzle-orm";
-import { Users, Star, ThumbsDown, Mail, BarChart2 } from "lucide-react";
+import { eq, sql, isNull, and } from "drizzle-orm";
+import { Users, Star, ThumbsDown, Mail, BarChart2, Mic } from "lucide-react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/Badge";
 
@@ -18,6 +18,7 @@ export default async function DashboardPage() {
   // Lead stats — only for tenant users
   let stats = { total: 0, new: 0, qualified: 0, disqualified: 0, contacted: 0 };
   let byEvent: { eventName: string | null; count: number }[] = [];
+  let voiceStats = { total: 0, leadsWithNotes: 0 };
 
   if (session?.user?.tenantId) {
     const tenantId = session.user.tenantId;
@@ -46,6 +47,20 @@ export default async function DashboardPage() {
       .limit(5);
 
     byEvent = eventRows;
+
+    // Voice note stats
+    const vnFilter = and(
+      eq(schema.voiceNotes.tenantId, tenantId),
+      eq(schema.voiceNotes.recordingStatus, "uploaded"),
+      isNull(schema.voiceNotes.deletedAt)
+    );
+    const [vnTotal] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(schema.voiceNotes).where(vnFilter);
+    const [vnLeads] = await db
+      .select({ count: sql<number>`count(distinct lead_id)::int` })
+      .from(schema.voiceNotes).where(vnFilter);
+    voiceStats = { total: vnTotal?.count ?? 0, leadsWithNotes: vnLeads?.count ?? 0 };
   }
 
   return (
@@ -59,7 +74,7 @@ export default async function DashboardPage() {
         </p>
       </div>
 
-      {/* KPI cards */}
+      {/* Lead KPI cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard icon={Users} label="Total Leads" value={stats.total} color="indigo"
           href="/leads" />
@@ -69,6 +84,14 @@ export default async function DashboardPage() {
           href="/leads?status=qualified" />
         <KpiCard icon={ThumbsDown} label="Disqualified" value={stats.disqualified} color="red"
           href="/leads?status=disqualified" />
+      </div>
+
+      {/* Voice note KPI cards */}
+      <div className="grid grid-cols-2 gap-4">
+        <KpiCard icon={Mic} label="Total Voice Notes" value={voiceStats.total} color="purple"
+          href="/leads" />
+        <KpiCard icon={Mic} label="Leads With Voice Notes" value={voiceStats.leadsWithNotes} color="teal"
+          href="/leads" />
       </div>
 
       {/* Bottom panels */}
@@ -130,10 +153,12 @@ function KpiCard({
   label: string; value: number; color: string; href: string;
 }) {
   const colorMap: Record<string, string> = {
-    indigo: "text-indigo-400 bg-indigo-600/10",
-    blue:   "text-blue-400   bg-blue-600/10",
-    emerald:"text-emerald-400 bg-emerald-600/10",
-    red:    "text-red-400    bg-red-600/10",
+    indigo:  "text-indigo-400  bg-indigo-600/10",
+    blue:    "text-blue-400    bg-blue-600/10",
+    emerald: "text-emerald-400 bg-emerald-600/10",
+    red:     "text-red-400     bg-red-600/10",
+    purple:  "text-purple-400  bg-purple-600/10",
+    teal:    "text-teal-400    bg-teal-600/10",
   };
 
   return (

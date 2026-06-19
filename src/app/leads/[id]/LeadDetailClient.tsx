@@ -1,11 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowLeft, Clock, User, Building2, Mail, Phone, Globe, FileText, Tag } from "lucide-react";
+import { ArrowLeft, Clock, User, Building2, Mail, Phone, Globe, Tag } from "lucide-react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/Badge";
 import { Select, Textarea } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
+import { VoiceRecorder } from "@/components/VoiceRecorder";
 import type { Lead } from "@/db/schema";
 
 const STATUS_COLORS: Record<string, "blue" | "yellow" | "green" | "red"> = {
@@ -114,6 +115,9 @@ export function LeadDetailClient({ lead, history, eventName, creatorName }: Prop
               rows={4}
             />
           </div>
+
+          {/* Voice Notes */}
+          <VoiceRecorder leadId={lead.id} />
         </div>
 
         {/* Right: status + audit */}

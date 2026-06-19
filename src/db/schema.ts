@@ -137,6 +137,48 @@ export const leads = pgTable(
   ]
 );
 
+// ─── Voice Notes ──────────────────────────────────────────────────────────────
+
+export const recordingStatusEnum = pgEnum("recording_status", [
+  "pending_upload", "uploaded", "failed", "deleted",
+]);
+
+export const transcriptionStatusEnum = pgEnum("transcription_status", [
+  "not_started", "pending", "completed", "failed",
+]);
+
+export const voiceNotes = pgTable(
+  "voice_notes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+    eventId: uuid("event_id").references(() => events.id, { onDelete: "set null" }),
+    leadId: uuid("lead_id").notNull().references(() => leads.id, { onDelete: "cascade" }),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+
+    s3Bucket: varchar("s3_bucket", { length: 255 }).notNull(),
+    s3Key: varchar("s3_key", { length: 1000 }).notNull(),
+    fileName: varchar("file_name", { length: 255 }).notNull(),
+    fileType: varchar("file_type", { length: 100 }).notNull(),
+    fileSizeBytes: text("file_size_bytes"),        // stored as text to avoid bigint friction
+    durationSeconds: text("duration_seconds"),
+
+    recordingStatus: recordingStatusEnum("recording_status").notNull().default("pending_upload"),
+    transcriptionStatus: transcriptionStatusEnum("transcription_status").notNull().default("not_started"),
+
+    retentionDeleteAt: timestamp("retention_delete_at", { withTimezone: true }),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("vn_tenant_idx").on(t.tenantId),
+    index("vn_lead_idx").on(t.leadId),
+    index("vn_status_idx").on(t.tenantId, t.recordingStatus),
+  ]
+);
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type Tenant = typeof tenants.$inferSelect;
@@ -151,3 +193,7 @@ export type NewLead = typeof leads.$inferInsert;
 export type UserRole = "platform_admin" | "tenant_admin" | "manager" | "booth_user";
 export type LeadStatus = "new" | "contacted" | "qualified" | "disqualified";
 export type LeadSource = "manual" | "qr_form" | "business_card";
+export type VoiceNote = typeof voiceNotes.$inferSelect;
+export type NewVoiceNote = typeof voiceNotes.$inferInsert;
+export type RecordingStatus = "pending_upload" | "uploaded" | "failed" | "deleted";
+export type TranscriptionStatus = "not_started" | "pending" | "completed" | "failed";
