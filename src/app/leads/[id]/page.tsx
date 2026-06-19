@@ -93,6 +93,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
       eventName={eventName}
       creatorName={creatorName}
       availableTranscriptId={availableTranscriptId}
+      userRole={session.user.role}
     />
   );
 }

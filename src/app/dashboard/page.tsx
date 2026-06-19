@@ -3,7 +3,7 @@ import { getTenantById } from "@/lib/tenant";
 import { cookies } from "next/headers";
 import { db, schema } from "@/db";
 import { eq, sql, isNull, and } from "drizzle-orm";
-import { Users, Star, ThumbsDown, Mail, BarChart2, Mic, FileText, CheckCircle, XCircle, Clock, Brain, AlertTriangle, Zap, Package } from "lucide-react";
+import { Users, Star, ThumbsDown, Mail, BarChart2, Mic, FileText, CheckCircle, XCircle, Clock, Brain, AlertTriangle, Zap, Package, Sparkles, Building2, TrendingUp } from "lucide-react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/Badge";
 
@@ -22,6 +22,9 @@ export default async function DashboardPage() {
   let txStats = { total: 0, completed: 0, failed: 0, pending: 0 };
   let ciStats = { total: 0, needsReview: 0, highUrgency: 0 };
   let topProductInterests: string[] = [];
+  let enrichStats = { leadsEnriched: 0, companiesEnriched: 0, successRate: 0, total: 0 };
+  let topIndustries: string[] = [];
+  let topCompanySizes: string[] = [];
 
   if (session?.user?.tenantId) {
     const tenantId = session.user.tenantId;
@@ -125,6 +128,50 @@ export default async function DashboardPage() {
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5)
       .map(([name]) => name);
+
+    // Enrichment stats
+    const companyRows = await db
+      .select({ status: schema.companyEnrichment.enrichmentStatus, count: sql<number>`count(*)::int` })
+      .from(schema.companyEnrichment)
+      .where(eq(schema.companyEnrichment.tenantId, tenantId))
+      .groupBy(schema.companyEnrichment.enrichmentStatus);
+
+    for (const r of companyRows) {
+      enrichStats.total += r.count;
+      if (r.status === "enriched" || r.status === "partially_enriched") enrichStats.companiesEnriched += r.count;
+    }
+
+    const [enrichedLeads] = await db
+      .select({ count: sql<number>`count(distinct lead_id)::int` })
+      .from(schema.companyEnrichment)
+      .where(and(
+        eq(schema.companyEnrichment.tenantId, tenantId),
+        eq(schema.companyEnrichment.enrichmentStatus, "enriched")
+      ));
+    enrichStats.leadsEnriched = enrichedLeads?.count ?? 0;
+    enrichStats.successRate = enrichStats.total > 0
+      ? Math.round((enrichStats.companiesEnriched / enrichStats.total) * 100)
+      : 0;
+
+    // Top industries
+    const industryRows = await db
+      .select({ industry: schema.companyEnrichment.industry, count: sql<number>`count(*)::int` })
+      .from(schema.companyEnrichment)
+      .where(and(eq(schema.companyEnrichment.tenantId, tenantId), eq(schema.companyEnrichment.enrichmentStatus, "enriched")))
+      .groupBy(schema.companyEnrichment.industry)
+      .orderBy(sql`count(*) desc`)
+      .limit(5);
+    topIndustries = industryRows.map(r => r.industry).filter(Boolean) as string[];
+
+    // Top company sizes
+    const sizeRows = await db
+      .select({ range: schema.companyEnrichment.employeeRange, count: sql<number>`count(*)::int` })
+      .from(schema.companyEnrichment)
+      .where(and(eq(schema.companyEnrichment.tenantId, tenantId), eq(schema.companyEnrichment.enrichmentStatus, "enriched")))
+      .groupBy(schema.companyEnrichment.employeeRange)
+      .orderBy(sql`count(*) desc`)
+      .limit(5);
+    topCompanySizes = sizeRows.map(r => r.range).filter(Boolean) as string[];
   }
 
   return (
@@ -190,6 +237,51 @@ export default async function DashboardPage() {
               ))}
             </div>
           )}
+        </div>
+      </div>
+
+      {/* Enrichment widgets */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="grid grid-cols-3 gap-4">
+          <KpiCard icon={Sparkles}   label="Leads Enriched"   value={enrichStats.leadsEnriched}    color="indigo" href="/leads" />
+          <KpiCard icon={Building2}  label="Companies Found"  value={enrichStats.companiesEnriched} color="teal"   href="/leads" />
+          <KpiCard icon={TrendingUp} label="Success Rate %"   value={enrichStats.successRate}       color="emerald" href="/leads" />
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          {/* Top Industries */}
+          <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
+            <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Top Industries</h2>
+            {topIndustries.length === 0 ? (
+              <p className="text-xs text-gray-600">No data yet</p>
+            ) : (
+              <div className="space-y-1.5">
+                {topIndustries.map((ind, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <span className="text-[10px] text-gray-600 w-3">{i + 1}</span>
+                    <span className="text-xs text-gray-300 truncate">{ind}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Top Company Sizes */}
+          <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
+            <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Company Sizes</h2>
+            {topCompanySizes.length === 0 ? (
+              <p className="text-xs text-gray-600">No data yet</p>
+            ) : (
+              <div className="space-y-1.5">
+                {topCompanySizes.map((size, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <span className="text-[10px] text-gray-600 w-3">{i + 1}</span>
+                    <span className="text-xs text-gray-300 truncate">{size}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

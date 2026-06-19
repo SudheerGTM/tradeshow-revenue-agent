@@ -279,6 +279,80 @@ export const conversationInsights = pgTable(
   ]
 );
 
+// ─── Enrichment ──────────────────────────────────────────────────────────────
+
+export const enrichmentStatusEnum = pgEnum("enrichment_status", [
+  "not_enriched", "enriched", "partially_enriched", "failed", "needs_review",
+]);
+
+export const companyEnrichment = pgTable(
+  "company_enrichment",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+    leadId: uuid("lead_id").notNull().references(() => leads.id, { onDelete: "cascade" }),
+
+    companyName: varchar("company_name", { length: 255 }),
+    website: varchar("website", { length: 500 }),
+    linkedinUrl: varchar("linkedin_url", { length: 500 }),
+
+    industry: varchar("industry", { length: 200 }),
+    subIndustry: varchar("sub_industry", { length: 200 }),
+
+    employeeCount: varchar("employee_count", { length: 50 }),
+    employeeRange: varchar("employee_range", { length: 100 }),
+
+    annualRevenue: varchar("annual_revenue", { length: 100 }),
+    revenueRange: varchar("revenue_range", { length: 100 }),
+
+    headquarters: varchar("headquarters", { length: 255 }),
+    foundedYear: varchar("founded_year", { length: 10 }),
+    companyDescription: text("company_description"),
+
+    apolloCompanyId: varchar("apollo_company_id", { length: 255 }),
+    enrichmentStatus: enrichmentStatusEnum("enrichment_status").notNull().default("not_enriched"),
+    needsReview: boolean("needs_review").notNull().default(false),
+    failureReason: text("failure_reason"),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("ce_tenant_idx").on(t.tenantId),
+    index("ce_lead_idx").on(t.leadId),
+    index("ce_status_idx").on(t.tenantId, t.enrichmentStatus),
+  ]
+);
+
+export const contactEnrichment = pgTable(
+  "contact_enrichment",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+    leadId: uuid("lead_id").notNull().references(() => leads.id, { onDelete: "cascade" }),
+
+    firstName: varchar("first_name", { length: 100 }),
+    lastName: varchar("last_name", { length: 100 }),
+    linkedinUrl: varchar("linkedin_url", { length: 500 }),
+
+    seniority: varchar("seniority", { length: 100 }),
+    department: varchar("department", { length: 200 }),
+    jobFunction: varchar("job_function", { length: 200 }),
+
+    apolloContactId: varchar("apollo_contact_id", { length: 255 }),
+    enrichmentStatus: enrichmentStatusEnum("enrichment_status").notNull().default("not_enriched"),
+    needsReview: boolean("needs_review").notNull().default(false),
+    failureReason: text("failure_reason"),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("cne_tenant_idx").on(t.tenantId),
+    index("cne_lead_idx").on(t.leadId),
+  ]
+);
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type Tenant = typeof tenants.$inferSelect;
@@ -305,3 +379,6 @@ export type NewConversationInsight = typeof conversationInsights.$inferInsert;
 export type InsightInputSource = "manual_transcript" | "transcript_table" | "lead_notes";
 export type InsightUrgency = "low" | "medium" | "high" | "unknown";
 export type InsightStatus = "completed" | "failed" | "needs_review";
+export type CompanyEnrichment = typeof companyEnrichment.$inferSelect;
+export type ContactEnrichment = typeof contactEnrichment.$inferSelect;
+export type EnrichmentStatus = "not_enriched" | "enriched" | "partially_enriched" | "failed" | "needs_review";
