@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Select, Textarea } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { VoiceRecorder } from "@/components/VoiceRecorder";
+import { ConversationIntelligence } from "@/components/ConversationIntelligence";
 import type { Lead } from "@/db/schema";
 
 const STATUS_COLORS: Record<string, "blue" | "yellow" | "green" | "red"> = {
@@ -26,9 +27,10 @@ interface Props {
   history: AuditEntry[];
   eventName?: string;
   creatorName?: string;
+  availableTranscriptId?: string | null;
 }
 
-export function LeadDetailClient({ lead, history, eventName, creatorName }: Props) {
+export function LeadDetailClient({ lead, history, eventName, creatorName, availableTranscriptId }: Props) {
   const [status, setStatus] = useState(lead.status);
   const [notes, setNotes] = useState(lead.notes ?? "");
   const [saving, setSaving] = useState(false);
@@ -118,6 +120,13 @@ export function LeadDetailClient({ lead, history, eventName, creatorName }: Prop
 
           {/* Voice Notes */}
           <VoiceRecorder leadId={lead.id} />
+
+          {/* Conversation Intelligence */}
+          <ConversationIntelligence
+            leadId={lead.id}
+            leadNotes={lead.notes}
+            availableTranscriptId={availableTranscriptId}
+          />
         </div>
 
         {/* Right: status + audit */}

@@ -10,6 +10,7 @@ import {
   boolean,
   date,
   doublePrecision,
+  numeric,
 } from "drizzle-orm/pg-core";
 
 // ─── Enums ────────────────────────────────────────────────────────────────────
@@ -219,6 +220,65 @@ export const transcripts = pgTable(
   ]
 );
 
+// ─── Conversation Insights ───────────────────────────────────────────────────
+
+export const insightInputSourceEnum = pgEnum("insight_input_source", [
+  "manual_transcript", "transcript_table", "lead_notes",
+]);
+
+export const insightUrgencyEnum = pgEnum("insight_urgency", [
+  "low", "medium", "high", "unknown",
+]);
+
+export const insightStatusEnum = pgEnum("insight_status", [
+  "completed", "failed", "needs_review",
+]);
+
+export const conversationInsights = pgTable(
+  "conversation_insights",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+    eventId: uuid("event_id").references(() => events.id, { onDelete: "set null" }),
+    leadId: uuid("lead_id").notNull().references(() => leads.id, { onDelete: "cascade" }),
+    voiceNoteId: uuid("voice_note_id").references(() => voiceNotes.id, { onDelete: "set null" }),
+    transcriptId: uuid("transcript_id").references(() => transcripts.id, { onDelete: "set null" }),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+
+    inputSource: insightInputSourceEnum("input_source").notNull(),
+    inputText: text("input_text").notNull(),
+
+    painPoints: jsonb("pain_points"),
+    productInterest: jsonb("product_interest"),
+    businessNeed: text("business_need"),
+    urgency: insightUrgencyEnum("urgency").notNull().default("unknown"),
+    timeline: text("timeline"),
+    budgetSignal: text("budget_signal"),
+    decisionMakerSignal: text("decision_maker_signal"),
+    competitorMentioned: text("competitor_mentioned"),
+    nextBestAction: text("next_best_action"),
+
+    summary: text("summary"),
+    recommendedFollowUp: text("recommended_follow_up"),
+
+    confidenceScore: numeric("confidence_score", { precision: 5, scale: 2 }),
+    aiModelUsed: varchar("ai_model_used", { length: 200 }),
+    aiRawResponse: jsonb("ai_raw_response"),
+
+    status: insightStatusEnum("status").notNull().default("completed"),
+    failureReason: text("failure_reason"),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("ci_tenant_idx").on(t.tenantId),
+    index("ci_lead_idx").on(t.leadId),
+    index("ci_status_idx").on(t.tenantId, t.status),
+    index("ci_urgency_idx").on(t.tenantId, t.urgency),
+  ]
+);
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type Tenant = typeof tenants.$inferSelect;
@@ -240,3 +300,8 @@ export type TranscriptionStatus = "not_started" | "pending" | "completed" | "fai
 export type Transcript = typeof transcripts.$inferSelect;
 export type NewTranscript = typeof transcripts.$inferInsert;
 export type TranscribeStatus = "not_started" | "queued" | "in_progress" | "completed" | "failed";
+export type ConversationInsight = typeof conversationInsights.$inferSelect;
+export type NewConversationInsight = typeof conversationInsights.$inferInsert;
+export type InsightInputSource = "manual_transcript" | "transcript_table" | "lead_notes";
+export type InsightUrgency = "low" | "medium" | "high" | "unknown";
+export type InsightStatus = "completed" | "failed" | "needs_review";

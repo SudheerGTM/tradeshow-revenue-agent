@@ -3,7 +3,7 @@ import { getTenantById } from "@/lib/tenant";
 import { cookies } from "next/headers";
 import { db, schema } from "@/db";
 import { eq, sql, isNull, and } from "drizzle-orm";
-import { Users, Star, ThumbsDown, Mail, BarChart2, Mic, FileText, CheckCircle, XCircle, Clock } from "lucide-react";
+import { Users, Star, ThumbsDown, Mail, BarChart2, Mic, FileText, CheckCircle, XCircle, Clock, Brain, AlertTriangle, Zap, Package } from "lucide-react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/Badge";
 
@@ -20,6 +20,8 @@ export default async function DashboardPage() {
   let byEvent: { eventName: string | null; count: number }[] = [];
   let voiceStats = { total: 0, leadsWithNotes: 0 };
   let txStats = { total: 0, completed: 0, failed: 0, pending: 0 };
+  let ciStats = { total: 0, needsReview: 0, highUrgency: 0 };
+  let topProductInterests: string[] = [];
 
   if (session?.user?.tenantId) {
     const tenantId = session.user.tenantId;
@@ -79,6 +81,50 @@ export default async function DashboardPage() {
       else if (r.status === "failed") txStats.failed = r.count;
       else if (r.status === "queued" || r.status === "in_progress") txStats.pending += r.count;
     }
+
+    // Conversation insight stats
+    const ciByStatus = await db
+      .select({ status: schema.conversationInsights.status, count: sql<number>`count(*)::int` })
+      .from(schema.conversationInsights)
+      .where(eq(schema.conversationInsights.tenantId, tenantId))
+      .groupBy(schema.conversationInsights.status);
+
+    for (const r of ciByStatus) {
+      ciStats.total += r.count;
+      if (r.status === "needs_review") ciStats.needsReview = r.count;
+    }
+
+    const [highUrgencyRow] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(schema.conversationInsights)
+      .where(and(
+        eq(schema.conversationInsights.tenantId, tenantId),
+        eq(schema.conversationInsights.urgency, "high")
+      ));
+    ciStats.highUrgency = highUrgencyRow?.count ?? 0;
+
+    // Top product interests — pull recent completed insights and flatten
+    const recentInsights = await db
+      .select({ productInterest: schema.conversationInsights.productInterest })
+      .from(schema.conversationInsights)
+      .where(and(
+        eq(schema.conversationInsights.tenantId, tenantId),
+        eq(schema.conversationInsights.status, "completed")
+      ))
+      .limit(50);
+
+    const interestCount: Record<string, number> = {};
+    for (const row of recentInsights) {
+      if (Array.isArray(row.productInterest)) {
+        for (const item of row.productInterest as string[]) {
+          if (item) interestCount[item] = (interestCount[item] ?? 0) + 1;
+        }
+      }
+    }
+    topProductInterests = Object.entries(interestCount)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([name]) => name);
   }
 
   return (
@@ -116,6 +162,35 @@ export default async function DashboardPage() {
         <KpiCard icon={CheckCircle}  label="Completed Transcriptions" value={txStats.completed}  color="emerald" href="/leads" />
         <KpiCard icon={Clock}        label="Pending Transcriptions"    value={txStats.pending}    color="blue"   href="/leads" />
         <KpiCard icon={XCircle}      label="Failed Transcriptions"     value={txStats.failed}     color="red"    href="/leads" />
+      </div>
+
+      {/* Conversation Intelligence widgets */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="grid grid-cols-3 gap-4">
+          <KpiCard icon={Brain}         label="Total Insights"    value={ciStats.total}       color="indigo" href="/leads" />
+          <KpiCard icon={AlertTriangle} label="Needs Review"      value={ciStats.needsReview}  color="yellow" href="/leads" />
+          <KpiCard icon={Zap}           label="High Urgency"      value={ciStats.highUrgency}  color="red"    href="/leads" />
+        </div>
+
+        {/* Top product interests */}
+        <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <Package className="w-4 h-4 text-indigo-400" />
+            <h2 className="text-sm font-semibold text-white">Top Product Interests</h2>
+          </div>
+          {topProductInterests.length === 0 ? (
+            <p className="text-sm text-gray-500 text-center py-2">No insights yet</p>
+          ) : (
+            <div className="space-y-2">
+              {topProductInterests.map((name, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <span className="text-xs text-gray-400 w-4 text-right">{i + 1}</span>
+                  <span className="flex-1 text-sm text-white truncate">{name}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Bottom panels */}
@@ -183,6 +258,7 @@ function KpiCard({
     red:     "text-red-400     bg-red-600/10",
     purple:  "text-purple-400  bg-purple-600/10",
     teal:    "text-teal-400    bg-teal-600/10",
+    yellow:  "text-yellow-400  bg-yellow-600/10",
   };
 
   return (

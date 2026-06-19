@@ -1,7 +1,7 @@
 import { auth } from "@/lib/auth";
 import { redirect, notFound } from "next/navigation";
 import { db, schema } from "@/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 import { LeadDetailClient } from "./LeadDetailClient";
 
 export default async function LeadDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -47,6 +47,21 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
     creatorName = userRows[0]?.name;
   }
 
+  // Fetch most recent completed transcript for this lead (for CI source option)
+  const transcriptRows = await db
+    .select({ id: schema.transcripts.id })
+    .from(schema.transcripts)
+    .where(
+      and(
+        eq(schema.transcripts.leadId, id),
+        eq(schema.transcripts.tenantId, tenantId),
+        eq(schema.transcripts.transcribeStatus, "completed")
+      )
+    )
+    .orderBy(desc(schema.transcripts.createdAt))
+    .limit(1);
+  const availableTranscriptId = transcriptRows[0]?.id ?? null;
+
   // Fetch audit history
   const history = await db
     .select({
@@ -77,6 +92,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
       history={historyForClient}
       eventName={eventName}
       creatorName={creatorName}
+      availableTranscriptId={availableTranscriptId}
     />
   );
 }
