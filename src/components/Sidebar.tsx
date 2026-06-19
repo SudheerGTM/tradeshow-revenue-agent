@@ -32,7 +32,6 @@ const NAV: NavItem[] = [
   { href: "/events",          label: "Events",       icon: CalendarDays,    release: 3 },
   { href: "/admin/tenants",   label: "Tenants",      icon: Building2,       release: 2, roles: ["platform_admin"] },
   { href: "/admin/users",     label: "Users",        icon: ShieldCheck,     release: 2, roles: ["platform_admin", "tenant_admin", "manager"] },
-  { href: "/leads",           label: "Voice Notes",  icon: Mic,             release: 4 },
   { href: "/follow-ups",      label: "Follow-ups",   icon: Mail,            release: 5 },
   { href: "/analytics",       label: "Analytics",    icon: BarChart2,       release: 5 },
   { href: "/settings/tenant", label: "Settings",     icon: Settings,        release: 2 },

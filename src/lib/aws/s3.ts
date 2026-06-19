@@ -49,12 +49,9 @@ export async function generatePresignedUploadUrl(
   fileSizeBytes: number
 ): Promise<string> {
   const cmd = new PutObjectCommand({
-    Bucket:        BUCKET,
-    Key:           s3Key,
-    ContentType:   fileType,
-    ContentLength: fileSizeBytes,
-    // Server-side encryption
-    ServerSideEncryption: "AES256",
+    Bucket:      BUCKET,
+    Key:         s3Key,
+    ContentType: fileType,
   });
   return getSignedUrl(getClient(), cmd, { expiresIn: 600 });
 }
