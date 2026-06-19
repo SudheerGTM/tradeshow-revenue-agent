@@ -3,7 +3,7 @@ import { getTenantById } from "@/lib/tenant";
 import { cookies } from "next/headers";
 import { db, schema } from "@/db";
 import { eq, sql, isNull, and } from "drizzle-orm";
-import { Users, Star, ThumbsDown, Mail, BarChart2, Mic } from "lucide-react";
+import { Users, Star, ThumbsDown, Mail, BarChart2, Mic, FileText, CheckCircle, XCircle, Clock } from "lucide-react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/Badge";
 
@@ -19,6 +19,7 @@ export default async function DashboardPage() {
   let stats = { total: 0, new: 0, qualified: 0, disqualified: 0, contacted: 0 };
   let byEvent: { eventName: string | null; count: number }[] = [];
   let voiceStats = { total: 0, leadsWithNotes: 0 };
+  let txStats = { total: 0, completed: 0, failed: 0, pending: 0 };
 
   if (session?.user?.tenantId) {
     const tenantId = session.user.tenantId;
@@ -61,6 +62,23 @@ export default async function DashboardPage() {
       .select({ count: sql<number>`count(distinct lead_id)::int` })
       .from(schema.voiceNotes).where(vnFilter);
     voiceStats = { total: vnTotal?.count ?? 0, leadsWithNotes: vnLeads?.count ?? 0 };
+
+    // Transcript stats
+    const txByStatus = await db
+      .select({
+        status: schema.transcripts.transcribeStatus,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(schema.transcripts)
+      .where(eq(schema.transcripts.tenantId, tenantId))
+      .groupBy(schema.transcripts.transcribeStatus);
+
+    for (const r of txByStatus) {
+      txStats.total += r.count;
+      if (r.status === "completed") txStats.completed = r.count;
+      else if (r.status === "failed") txStats.failed = r.count;
+      else if (r.status === "queued" || r.status === "in_progress") txStats.pending += r.count;
+    }
   }
 
   return (
@@ -88,10 +106,16 @@ export default async function DashboardPage() {
 
       {/* Voice note KPI cards */}
       <div className="grid grid-cols-2 gap-4">
-        <KpiCard icon={Mic} label="Total Voice Notes" value={voiceStats.total} color="purple"
-          href="/leads" />
-        <KpiCard icon={Mic} label="Leads With Voice Notes" value={voiceStats.leadsWithNotes} color="teal"
-          href="/leads" />
+        <KpiCard icon={Mic} label="Total Voice Notes" value={voiceStats.total} color="purple" href="/leads" />
+        <KpiCard icon={Mic} label="Leads With Voice Notes" value={voiceStats.leadsWithNotes} color="teal" href="/leads" />
+      </div>
+
+      {/* Transcript KPI cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <KpiCard icon={FileText}     label="Total Transcriptions"     value={txStats.total}     color="indigo" href="/leads" />
+        <KpiCard icon={CheckCircle}  label="Completed Transcriptions" value={txStats.completed}  color="emerald" href="/leads" />
+        <KpiCard icon={Clock}        label="Pending Transcriptions"    value={txStats.pending}    color="blue"   href="/leads" />
+        <KpiCard icon={XCircle}      label="Failed Transcriptions"     value={txStats.failed}     color="red"    href="/leads" />
       </div>
 
       {/* Bottom panels */}

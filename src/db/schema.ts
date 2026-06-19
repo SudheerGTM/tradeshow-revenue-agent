@@ -9,6 +9,7 @@ import {
   index,
   boolean,
   date,
+  doublePrecision,
 } from "drizzle-orm/pg-core";
 
 // ─── Enums ────────────────────────────────────────────────────────────────────
@@ -179,6 +180,45 @@ export const voiceNotes = pgTable(
   ]
 );
 
+// ─── Transcripts ─────────────────────────────────────────────────────────────
+
+export const transcribeStatusEnum = pgEnum("transcribe_status", [
+  "not_started", "queued", "in_progress", "completed", "failed",
+]);
+
+export const transcripts = pgTable(
+  "transcripts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+    eventId: uuid("event_id").references(() => events.id, { onDelete: "set null" }),
+    leadId: uuid("lead_id").notNull().references(() => leads.id, { onDelete: "cascade" }),
+    voiceNoteId: uuid("voice_note_id").notNull().references(() => voiceNotes.id, { onDelete: "cascade" }),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+
+    transcribeJobName: varchar("transcribe_job_name", { length: 500 }).notNull().unique(),
+    transcribeStatus: transcribeStatusEnum("transcribe_status").notNull().default("queued"),
+
+    transcriptText: text("transcript_text"),
+    transcriptJsonS3Key: varchar("transcript_json_s3_key", { length: 1000 }),
+    languageCode: varchar("language_code", { length: 20 }).notNull().default("en-GB"),
+
+    confidenceScore: doublePrecision("confidence_score"),
+    failureReason: text("failure_reason"),
+
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("tx_tenant_idx").on(t.tenantId),
+    index("tx_lead_idx").on(t.leadId),
+    index("tx_voice_note_idx").on(t.voiceNoteId),
+    index("tx_status_idx").on(t.tenantId, t.transcribeStatus),
+  ]
+);
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type Tenant = typeof tenants.$inferSelect;
@@ -197,3 +237,6 @@ export type VoiceNote = typeof voiceNotes.$inferSelect;
 export type NewVoiceNote = typeof voiceNotes.$inferInsert;
 export type RecordingStatus = "pending_upload" | "uploaded" | "failed" | "deleted";
 export type TranscriptionStatus = "not_started" | "pending" | "completed" | "failed";
+export type Transcript = typeof transcripts.$inferSelect;
+export type NewTranscript = typeof transcripts.$inferInsert;
+export type TranscribeStatus = "not_started" | "queued" | "in_progress" | "completed" | "failed";
