@@ -4,57 +4,96 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
+  CalendarDays,
   Users,
-  Mic,
+  Brain,
+  Building2,
+  Star,
   Mail,
+  RefreshCw,
   BarChart2,
   Settings,
-  Building2,
-  ChevronRight,
   ShieldCheck,
-  CalendarDays,
   UserPlus,
+  ChevronLeft,
+  ChevronRight,
+  Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useState } from "react";
 
 interface NavItem {
   href: string;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
   release: number;
-  roles?: string[];  // undefined = all roles
+  roles?: string[];
+  section?: string;
 }
 
 const NAV: NavItem[] = [
-  { href: "/dashboard",       label: "Dashboard",    icon: LayoutDashboard, release: 1 },
-  { href: "/leads",           label: "Leads",        icon: Users,           release: 3 },
-  { href: "/leads/new",       label: "Capture Lead", icon: UserPlus,        release: 3 },
-  { href: "/events",          label: "Events",       icon: CalendarDays,    release: 3 },
-  { href: "/admin/tenants",   label: "Tenants",      icon: Building2,       release: 2, roles: ["platform_admin"] },
-  { href: "/admin/users",     label: "Users",        icon: ShieldCheck,     release: 2, roles: ["platform_admin", "tenant_admin", "manager"] },
-  { href: "/follow-ups",      label: "Follow-ups",   icon: Mail,            release: 5 },
-  { href: "/analytics",       label: "Analytics",    icon: BarChart2,       release: 5 },
-  { href: "/settings/tenant", label: "Settings",     icon: Settings,        release: 2 },
+  { href: "/dashboard",          label: "Dashboard",               icon: LayoutDashboard, release: 1 },
+  { href: "/events",             label: "Events",                  icon: CalendarDays,    release: 3 },
+  { href: "/leads",              label: "Lead Intelligence",       icon: Users,           release: 3 },
+  { href: "/leads/new",          label: "Capture Lead",            icon: UserPlus,        release: 3 },
+  { href: "/conversation-intel", label: "Conversation Intelligence", icon: Brain,         release: 6 },
+  { href: "/company-intel",      label: "Company Intelligence",    icon: Building2,       release: 7 },
+  { href: "/lead-scoring",       label: "Lead Scoring",            icon: Star,            release: 8 },
+  { href: "/follow-ups",         label: "Follow-Ups",              icon: Mail,            release: 8 },
+  { href: "/crm-sync",           label: "CRM Sync",                icon: RefreshCw,       release: 9 },
+  { href: "/roi-analytics",      label: "ROI Analytics",           icon: BarChart2,       release: 9 },
+  { href: "/admin/tenants",      label: "Tenants",                 icon: Zap,             release: 2, roles: ["platform_admin"] },
+  { href: "/admin/users",        label: "Users",                   icon: ShieldCheck,     release: 2, roles: ["platform_admin", "tenant_admin", "manager"] },
+  { href: "/settings/tenant",    label: "Settings",                icon: Settings,        release: 2 },
 ];
 
-const CURRENT_RELEASE = 4;
+const CURRENT_RELEASE = 7;
 
 export function Sidebar({ role }: { role: string }) {
   const pathname = usePathname();
+  const [collapsed, setCollapsed] = useState(false);
 
   const visible = NAV.filter(
     (item) => !item.roles || item.roles.includes(role)
   );
 
   return (
-    <aside className="w-56 bg-gray-900 border-r border-gray-800 flex flex-col shrink-0">
-      <div className="h-14 px-4 flex items-center gap-2 border-b border-gray-800">
-        <div className="w-7 h-7 rounded-md bg-indigo-600 flex items-center justify-center shrink-0">
+    <aside
+      className={cn(
+        "flex flex-col shrink-0 transition-all duration-200",
+        collapsed ? "w-16" : "w-60"
+      )}
+      style={{ background: "#0F4C81", minHeight: "100vh" }}
+    >
+      {/* Logo */}
+      <div
+        className="h-14 px-4 flex items-center gap-2.5 shrink-0"
+        style={{ borderBottom: "1px solid rgba(255,255,255,0.12)" }}
+      >
+        <div
+          className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+          style={{ background: "#00B8D9" }}
+        >
           <span className="text-white text-xs font-bold">TS</span>
         </div>
-        <span className="text-white font-semibold text-sm truncate">TradeShow Agent</span>
+        {!collapsed && (
+          <div className="flex-1 min-w-0">
+            <p className="text-white text-xs font-bold truncate leading-tight">Trade Show</p>
+            <p className="text-[10px] truncate leading-tight" style={{ color: "rgba(255,255,255,0.55)" }}>Revenue Agent</p>
+          </div>
+        )}
+        <button
+          onClick={() => setCollapsed(c => !c)}
+          className="text-white/50 hover:text-white transition shrink-0 ml-auto"
+        >
+          {collapsed
+            ? <ChevronRight className="w-4 h-4" />
+            : <ChevronLeft className="w-4 h-4" />
+          }
+        </button>
       </div>
 
+      {/* Nav */}
       <nav className="flex-1 py-3 px-2 space-y-0.5 overflow-y-auto">
         {visible.map(({ href, label, icon: Icon, release }) => {
           const active = pathname === href || (href !== "/dashboard" && pathname.startsWith(href));
@@ -64,32 +103,48 @@ export function Sidebar({ role }: { role: string }) {
               key={href}
               href={locked ? "#" : href}
               aria-disabled={locked}
+              title={collapsed ? label : undefined}
               className={cn(
-                "flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors",
+                "flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm transition-all",
+                collapsed ? "justify-center" : "",
                 active
-                  ? "bg-indigo-600/20 text-indigo-400"
+                  ? "text-white font-medium"
                   : locked
-                  ? "text-gray-600 cursor-not-allowed"
-                  : "text-gray-400 hover:text-white hover:bg-gray-800"
+                  ? "cursor-not-allowed opacity-40"
+                  : "text-white/60 hover:text-white hover:bg-white/10"
               )}
+              style={active ? { background: "#00B8D9" } : undefined}
             >
-              <Icon className="w-4 h-4 shrink-0" />
-              <span className="flex-1 truncate">{label}</span>
-              {locked && (
-                <span className="text-[10px] font-medium text-gray-600 bg-gray-800 px-1.5 py-0.5 rounded">
-                  R{release}
-                </span>
+              <Icon className="w-4 h-4 shrink-0 text-white" />
+              {!collapsed && (
+                <>
+                  <span className="flex-1 truncate">{label}</span>
+                  {locked && (
+                    <span className="text-[9px] font-semibold text-white/30 bg-white/10 px-1.5 py-0.5 rounded">
+                      R{release}
+                    </span>
+                  )}
+                </>
               )}
-              {active && !locked && <ChevronRight className="w-3 h-3 opacity-50" />}
             </Link>
           );
         })}
       </nav>
 
-      <div className="p-3 border-t border-gray-800">
-        <span className="text-[11px] text-gray-500 uppercase tracking-wider">
-          {role.replace("_", " ")}
-        </span>
+      {/* Role footer */}
+      <div
+        className="p-3 shrink-0"
+        style={{ borderTop: "1px solid rgba(255,255,255,0.12)" }}
+      >
+        {collapsed ? (
+          <div className="w-7 h-7 rounded-full bg-white/20 flex items-center justify-center">
+            <span className="text-white text-[10px] font-bold uppercase">{role[0]}</span>
+          </div>
+        ) : (
+          <span className="text-[11px] uppercase tracking-wider font-medium text-white/40">
+            {role.replace(/_/g, " ")}
+          </span>
+        )}
       </div>
     </aside>
   );

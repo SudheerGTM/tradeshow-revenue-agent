@@ -17,7 +17,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   }
 
   return (
-    <div className="flex h-screen bg-gray-950 overflow-hidden">
+    <div className="flex h-screen bg-[#F8FAFC] overflow-hidden">
       <Sidebar role={session.user.role} />
       <div className="flex flex-col flex-1 overflow-hidden">
         <TopBar user={session.user} tenantName={tenant?.name} />

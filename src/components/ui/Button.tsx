@@ -3,15 +3,16 @@ import { Loader2 } from "lucide-react";
 
 interface Props extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   loading?: boolean;
-  variant?: "primary" | "secondary" | "ghost" | "danger";
+  variant?: "primary" | "secondary" | "ghost" | "danger" | "turquoise";
   size?: "sm" | "md";
 }
 
 const variants = {
-  primary:   "bg-indigo-600 hover:bg-indigo-500 text-white",
-  secondary: "bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700",
-  ghost:     "text-gray-400 hover:text-white hover:bg-gray-800",
-  danger:    "bg-red-600 hover:bg-red-500 text-white",
+  primary:   "bg-[#0F4C81] hover:bg-[#0a3660] text-white shadow-sm",
+  turquoise: "bg-[#00B8D9] hover:bg-[#009ab8] text-white shadow-sm",
+  secondary: "bg-white hover:bg-slate-50 text-[#0F172A] border border-[#E2E8F0] shadow-sm",
+  ghost:     "text-[#475569] hover:text-[#0F172A] hover:bg-slate-100",
+  danger:    "bg-[#DC2626] hover:bg-red-700 text-white shadow-sm",
 };
 
 const sizes = {
@@ -27,7 +28,7 @@ export function Button({
       {...props}
       disabled={disabled || loading}
       className={cn(
-        "inline-flex items-center justify-center gap-2 rounded-lg font-medium transition",
+        "inline-flex items-center justify-center gap-2 rounded-xl font-medium transition",
         "disabled:opacity-60 disabled:cursor-not-allowed",
         variants[variant],
         sizes[size],

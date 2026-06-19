@@ -9,18 +9,18 @@ export function Input({ label, error, className, ...props }: InputProps) {
   return (
     <div>
       {label && (
-        <label className="block text-xs font-medium text-gray-400 mb-1.5">{label}</label>
+        <label className="block text-xs font-medium text-[#475569] mb-1.5">{label}</label>
       )}
       <input
         {...props}
         className={cn(
-          "w-full bg-gray-800 border rounded-lg px-3 py-2.5 text-sm text-white placeholder-gray-600",
-          "focus:outline-none focus:ring-2 focus:ring-indigo-500 transition",
-          error ? "border-red-600" : "border-gray-700",
+          "w-full bg-white border rounded-xl px-3 py-2.5 text-sm text-[#0F172A] placeholder-[#94A3B8]",
+          "focus:outline-none focus:ring-2 focus:ring-[#00B8D9] focus:border-[#00B8D9] transition",
+          error ? "border-[#DC2626]" : "border-[#E2E8F0]",
           className
         )}
       />
-      {error && <p className="text-xs text-red-400 mt-1">{error}</p>}
+      {error && <p className="text-xs text-[#DC2626] mt-1">{error}</p>}
     </div>
   );
 }
@@ -34,20 +34,20 @@ export function Select({ label, error, className, children, ...props }: SelectPr
   return (
     <div>
       {label && (
-        <label className="block text-xs font-medium text-gray-400 mb-1.5">{label}</label>
+        <label className="block text-xs font-medium text-[#475569] mb-1.5">{label}</label>
       )}
       <select
         {...props}
         className={cn(
-          "w-full bg-gray-800 border rounded-lg px-3 py-2.5 text-sm text-white",
-          "focus:outline-none focus:ring-2 focus:ring-indigo-500 transition",
-          error ? "border-red-600" : "border-gray-700",
+          "w-full bg-white border rounded-xl px-3 py-2.5 text-sm text-[#0F172A]",
+          "focus:outline-none focus:ring-2 focus:ring-[#00B8D9] focus:border-[#00B8D9] transition",
+          error ? "border-[#DC2626]" : "border-[#E2E8F0]",
           className
         )}
       >
         {children}
       </select>
-      {error && <p className="text-xs text-red-400 mt-1">{error}</p>}
+      {error && <p className="text-xs text-[#DC2626] mt-1">{error}</p>}
     </div>
   );
 }
@@ -58,19 +58,19 @@ export function Textarea({ label, error, className, ...props }: {
   return (
     <div>
       {label && (
-        <label className="block text-xs font-medium text-gray-400 mb-1.5">{label}</label>
+        <label className="block text-xs font-medium text-[#475569] mb-1.5">{label}</label>
       )}
       <textarea
         rows={3}
         {...props}
         className={cn(
-          "w-full bg-gray-800 border rounded-lg px-3 py-2.5 text-sm text-white placeholder-gray-600 resize-none",
-          "focus:outline-none focus:ring-2 focus:ring-indigo-500 transition",
-          error ? "border-red-600" : "border-gray-700",
+          "w-full bg-white border rounded-xl px-3 py-2.5 text-sm text-[#0F172A] placeholder-[#94A3B8] resize-none",
+          "focus:outline-none focus:ring-2 focus:ring-[#00B8D9] focus:border-[#00B8D9] transition",
+          error ? "border-[#DC2626]" : "border-[#E2E8F0]",
           className
         )}
       />
-      {error && <p className="text-xs text-red-400 mt-1">{error}</p>}
+      {error && <p className="text-xs text-[#DC2626] mt-1">{error}</p>}
     </div>
   );
 }

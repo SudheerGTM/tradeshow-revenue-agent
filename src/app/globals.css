@@ -1,26 +1,39 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* GTMTechSol Design System */
+  --revenue-blue: #0F4C81;
+  --revenue-blue-dark: #0a3660;
+  --revenue-blue-light: #1a5fa0;
+  --ai-turquoise: #00B8D9;
+  --ai-turquoise-bg: #e6f8fc;
+  --success: #16A34A;
+  --success-bg: #dcfce7;
+  --warning: #F59E0B;
+  --warning-bg: #fef3c7;
+  --danger: #DC2626;
+  --danger-bg: #fee2e2;
+  --bg: #F8FAFC;
+  --card: #FFFFFF;
+  --border: #E2E8F0;
+  --border-dark: #CBD5E1;
+  --text: #0F172A;
+  --text-secondary: #475569;
+  --text-muted: #94A3B8;
+
+  --background: var(--card);
+  --foreground: var(--text);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-background: var(--bg);
+  --color-foreground: var(--text);
+  --font-sans: var(--font-inter);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-inter), 'Poppins', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
 }

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import {
-  Brain, AlertTriangle, CheckCircle, Clock, Loader2,
+  Brain, AlertTriangle, CheckCircle, Loader2,
   ChevronDown, ChevronUp, RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
@@ -12,31 +12,15 @@ type Urgency = "low" | "medium" | "high" | "unknown";
 type Status = "completed" | "failed" | "needs_review";
 
 interface InsightRow {
-  id: string;
-  inputSource: InputSource;
-  painPoints: string[] | null;
-  productInterest: string[] | null;
-  businessNeed: string | null;
-  urgency: Urgency;
-  timeline: string | null;
-  budgetSignal: string | null;
-  decisionMakerSignal: string | null;
-  competitorMentioned: string | null;
-  nextBestAction: string | null;
-  summary: string | null;
-  recommendedFollowUp: string | null;
-  confidenceScore: string | null;
-  aiModelUsed: string | null;
-  status: Status;
-  failureReason: string | null;
-  createdAt: string;
+  id: string; inputSource: InputSource; painPoints: string[] | null;
+  productInterest: string[] | null; businessNeed: string | null; urgency: Urgency;
+  timeline: string | null; budgetSignal: string | null; decisionMakerSignal: string | null;
+  competitorMentioned: string | null; nextBestAction: string | null; summary: string | null;
+  recommendedFollowUp: string | null; confidenceScore: string | null; aiModelUsed: string | null;
+  status: Status; failureReason: string | null; createdAt: string;
 }
 
-interface Props {
-  leadId: string;
-  leadNotes?: string | null;
-  availableTranscriptId?: string | null;
-}
+interface Props { leadId: string; leadNotes?: string | null; availableTranscriptId?: string | null; }
 
 export function ConversationIntelligence({ leadId, leadNotes, availableTranscriptId }: Props) {
   const [source, setSource] = useState<InputSource>("manual_transcript");
@@ -66,16 +50,13 @@ export function ConversationIntelligence({ leadId, leadNotes, availableTranscrip
       const body: Record<string, string> = { leadId, inputSource: source };
       if (source === "manual_transcript") body.inputText = manualText;
       if (source === "transcript_table" && availableTranscriptId) body.transcriptId = availableTranscriptId;
-
       const res = await fetch("/api/conversation-insights/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Analysis failed");
-
       await fetchInsights();
       setExpandedId(data.id);
       if (source === "manual_transcript") setManualText("");
@@ -88,31 +69,28 @@ export function ConversationIntelligence({ leadId, leadNotes, availableTranscrip
 
   const canAnalyze = source === "manual_transcript"
     ? manualText.trim().length > 20
-    : source === "transcript_table"
-    ? !!availableTranscriptId
-    : !!leadNotes;
+    : source === "transcript_table" ? !!availableTranscriptId : !!leadNotes;
 
   return (
     <div className="space-y-5">
       {/* Input card */}
-      <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 space-y-4">
+      <div className="bg-white border border-[#E2E8F0] rounded-xl p-5 space-y-4 shadow-sm">
         <div className="flex items-center gap-2">
-          <Brain className="w-4 h-4 text-indigo-400 shrink-0" />
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-            Conversation Intelligence
+          <Brain className="w-4 h-4 text-[#0F4C81] shrink-0" />
+          <p className="text-xs font-semibold text-[#475569] uppercase tracking-wider">
+            Conversation Intelligence · Gemini AI
           </p>
         </div>
 
-        {/* Disclaimer */}
-        <div className="bg-amber-950/20 border border-amber-800/40 rounded-lg px-3 py-2">
-          <p className="text-xs text-amber-300/80">
+        <div className="bg-[#fef3c7] border border-[#F59E0B]/30 rounded-xl px-3 py-2">
+          <p className="text-xs text-[#92400e]">
             AI insights are suggestions. Please review before using them for sales follow-up.
           </p>
         </div>
 
         {/* Source selector */}
         <div>
-          <p className="text-xs text-gray-500 mb-2">Analyze from:</p>
+          <p className="text-xs text-[#94A3B8] mb-2">Analyze from:</p>
           <div className="flex gap-2 flex-wrap">
             {([
               { value: "manual_transcript", label: "Manual Transcript" },
@@ -123,12 +101,12 @@ export function ConversationIntelligence({ leadId, leadNotes, availableTranscrip
                 key={opt.value}
                 disabled={opt.disabled}
                 onClick={() => setSource(opt.value)}
-                className={`text-xs px-3 py-1.5 rounded-lg border transition ${
+                className={`text-xs px-3 py-1.5 rounded-xl border transition font-medium ${
                   source === opt.value
-                    ? "bg-indigo-600 border-indigo-500 text-white"
+                    ? "bg-[#0F4C81] border-[#0F4C81] text-white"
                     : opt.disabled
-                    ? "border-gray-800 text-gray-600 cursor-not-allowed"
-                    : "border-gray-700 text-gray-400 hover:border-gray-600 hover:text-gray-200"
+                    ? "border-[#E2E8F0] text-[#CBD5E1] cursor-not-allowed"
+                    : "border-[#E2E8F0] text-[#475569] hover:border-[#CBD5E1] hover:text-[#0F172A]"
                 }`}
               >
                 {opt.label}
@@ -138,66 +116,58 @@ export function ConversationIntelligence({ leadId, leadNotes, availableTranscrip
           </div>
         </div>
 
-        {/* Manual text input */}
         {source === "manual_transcript" && (
           <textarea
             value={manualText}
             onChange={e => setManualText(e.target.value)}
             placeholder="Paste or type the conversation transcript or notes here…"
             rows={6}
-            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 resize-none"
+            className="w-full bg-white border border-[#E2E8F0] rounded-xl px-3 py-2.5 text-sm text-[#0F172A] placeholder-[#94A3B8] focus:outline-none focus:border-[#00B8D9] focus:ring-2 focus:ring-[#00B8D9]/20 resize-none transition"
           />
         )}
 
         {source === "transcript_table" && availableTranscriptId && (
-          <p className="text-xs text-gray-400 bg-gray-800 rounded-lg px-3 py-2.5">
+          <p className="text-xs text-[#475569] bg-[#F8FAFC] rounded-xl px-3 py-2.5 border border-[#E2E8F0]">
             Will use the existing completed transcript for this lead.
           </p>
         )}
 
         {source === "lead_notes" && leadNotes && (
-          <div className="bg-gray-800 rounded-lg px-3 py-2.5">
-            <p className="text-xs text-gray-500 mb-1">Lead notes preview:</p>
-            <p className="text-xs text-gray-300 line-clamp-4">{leadNotes}</p>
+          <div className="bg-[#F8FAFC] rounded-xl px-3 py-2.5 border border-[#E2E8F0]">
+            <p className="text-xs text-[#94A3B8] mb-1">Lead notes preview:</p>
+            <p className="text-xs text-[#475569] line-clamp-4">{leadNotes}</p>
           </div>
         )}
 
         {error && (
-          <p className="text-xs text-red-400 bg-red-950/30 border border-red-900/50 rounded-lg px-3 py-2">
+          <p className="text-xs text-[#DC2626] bg-[#fee2e2] border border-[#DC2626]/20 rounded-xl px-3 py-2">
             {error}
           </p>
         )}
 
-        <Button
-          onClick={handleAnalyze}
-          disabled={!canAnalyze || analyzing}
-          loading={analyzing}
-          className="w-full"
-        >
+        <Button onClick={handleAnalyze} disabled={!canAnalyze || analyzing} loading={analyzing} className="w-full">
           <Brain className="w-4 h-4" />
           {analyzing ? "Analyzing…" : "Analyze Conversation"}
         </Button>
       </div>
 
       {/* Past insights */}
-      <div className="bg-gray-900 border border-gray-800 rounded-xl divide-y divide-gray-800">
+      <div className="bg-white border border-[#E2E8F0] rounded-xl divide-y divide-[#F8FAFC] shadow-sm">
         <div className="px-5 py-3 flex items-center justify-between">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-            Intelligence Reports
-          </p>
-          <button onClick={fetchInsights} className="text-gray-600 hover:text-gray-400 transition">
+          <p className="text-xs font-semibold text-[#475569] uppercase tracking-wider">Intelligence Reports</p>
+          <button onClick={fetchInsights} className="text-[#CBD5E1] hover:text-[#94A3B8] transition">
             <RefreshCw className="w-3.5 h-3.5" />
           </button>
         </div>
 
         {loading ? (
           <div className="px-5 py-8 flex justify-center">
-            <Loader2 className="w-5 h-5 animate-spin text-gray-600" />
+            <Loader2 className="w-5 h-5 animate-spin text-[#CBD5E1]" />
           </div>
         ) : insights.length === 0 ? (
           <div className="px-5 py-8 text-center">
-            <Brain className="w-8 h-8 text-gray-700 mx-auto mb-2" />
-            <p className="text-sm text-gray-500">No intelligence reports yet</p>
+            <Brain className="w-8 h-8 text-[#E2E8F0] mx-auto mb-2" />
+            <p className="text-sm text-[#94A3B8]">No intelligence reports yet</p>
           </div>
         ) : (
           insights.map(insight => (
@@ -214,16 +184,14 @@ export function ConversationIntelligence({ leadId, leadNotes, availableTranscrip
   );
 }
 
-// ─── InsightCard ──────────────────────────────────────────────────────────────
-
 function InsightCard({
   insight, expanded, onToggle,
 }: { insight: InsightRow; expanded: boolean; onToggle: () => void }) {
   const confidence = insight.confidenceScore ? Math.round(Number(insight.confidenceScore)) : null;
+  const needsHumanReview = confidence !== null && confidence < 70;
 
   return (
     <div className="px-5 py-4">
-      {/* Header row */}
       <button onClick={onToggle} className="w-full text-left">
         <div className="flex items-start gap-3">
           <div className="flex-1 min-w-0">
@@ -231,42 +199,40 @@ function InsightCard({
               <StatusBadge status={insight.status} />
               <UrgencyBadge urgency={insight.urgency} />
               {confidence !== null && (
-                <span className="text-[10px] text-gray-500 bg-gray-800 px-1.5 py-0.5 rounded">
-                  {confidence}% confidence
+                <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-lg ${
+                  needsHumanReview
+                    ? "bg-[#fee2e2] text-[#DC2626]"
+                    : "bg-[#dcfce7] text-[#16A34A]"
+                }`}>
+                  {confidence}% confidence{needsHumanReview ? " · Needs Review" : ""}
                 </span>
               )}
-              <span className="text-[10px] text-gray-600">
+              <span className="text-[10px] text-[#94A3B8]">
                 {new Date(insight.createdAt).toLocaleString()}
               </span>
             </div>
             {insight.summary && (
-              <p className="text-xs text-gray-400 mt-1.5 line-clamp-2">{insight.summary}</p>
+              <p className="text-xs text-[#475569] mt-1.5 line-clamp-2">{insight.summary}</p>
             )}
           </div>
-          {expanded ? (
-            <ChevronUp className="w-4 h-4 text-gray-600 shrink-0 mt-0.5" />
-          ) : (
-            <ChevronDown className="w-4 h-4 text-gray-600 shrink-0 mt-0.5" />
-          )}
+          {expanded
+            ? <ChevronUp className="w-4 h-4 text-[#94A3B8] shrink-0 mt-0.5" />
+            : <ChevronDown className="w-4 h-4 text-[#94A3B8] shrink-0 mt-0.5" />
+          }
         </div>
       </button>
 
-      {/* Expanded detail */}
       {expanded && (
         <div className="mt-4 space-y-4">
-          {/* Summary */}
-          {insight.summary && (
-            <Field label="Summary" value={insight.summary} />
-          )}
+          {insight.summary && <Field label="Summary" value={insight.summary} />}
 
-          {/* Arrays */}
           {insight.painPoints && (insight.painPoints as string[]).length > 0 && (
             <div>
-              <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Pain Points</p>
+              <p className="text-[10px] font-semibold text-[#475569] uppercase tracking-wider mb-1.5">Pain Points</p>
               <ul className="space-y-1">
                 {(insight.painPoints as string[]).map((p, i) => (
-                  <li key={i} className="flex items-start gap-2 text-xs text-gray-300">
-                    <span className="w-1.5 h-1.5 rounded-full bg-red-400 mt-1 shrink-0" />
+                  <li key={i} className="flex items-start gap-2 text-xs text-[#0F172A]">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#DC2626] mt-1 shrink-0" />
                     {p}
                   </li>
                 ))}
@@ -276,10 +242,10 @@ function InsightCard({
 
           {insight.productInterest && (insight.productInterest as string[]).length > 0 && (
             <div>
-              <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Product Interest</p>
+              <p className="text-[10px] font-semibold text-[#475569] uppercase tracking-wider mb-1.5">Product Interest</p>
               <div className="flex flex-wrap gap-1.5">
                 {(insight.productInterest as string[]).map((p, i) => (
-                  <span key={i} className="text-xs bg-indigo-950/50 border border-indigo-800/50 text-indigo-300 px-2 py-0.5 rounded-full">
+                  <span key={i} className="text-xs bg-[#e6f8fc] border border-[#00B8D9]/30 text-[#0F4C81] px-2 py-0.5 rounded-lg">
                     {p}
                   </span>
                 ))}
@@ -296,32 +262,34 @@ function InsightCard({
           </div>
 
           {insight.nextBestAction && (
-            <div className="bg-indigo-950/30 border border-indigo-800/40 rounded-lg p-3">
-              <p className="text-[10px] font-semibold text-indigo-400 uppercase tracking-wider mb-1">Next Best Action</p>
-              <p className="text-xs text-indigo-200">{insight.nextBestAction}</p>
+            <div className="bg-[#dbeafe] border border-[#0F4C81]/20 rounded-xl p-3">
+              <p className="text-[10px] font-semibold text-[#0F4C81] uppercase tracking-wider mb-1">Recommended Next Action</p>
+              <p className="text-xs text-[#0F4C81]">{insight.nextBestAction}</p>
             </div>
           )}
 
           {insight.recommendedFollowUp && (
-            <div className="bg-emerald-950/30 border border-emerald-800/40 rounded-lg p-3">
-              <p className="text-[10px] font-semibold text-emerald-400 uppercase tracking-wider mb-1">Recommended Follow-up</p>
-              <p className="text-xs text-emerald-200">{insight.recommendedFollowUp}</p>
+            <div className="bg-[#dcfce7] border border-[#16A34A]/20 rounded-xl p-3">
+              <p className="text-[10px] font-semibold text-[#16A34A] uppercase tracking-wider mb-1">Recommended Follow-up</p>
+              <p className="text-xs text-[#15803d]">{insight.recommendedFollowUp}</p>
             </div>
           )}
 
-          {insight.status === "needs_review" && (
-            <div className="flex items-center gap-2 bg-amber-950/30 border border-amber-800/40 rounded-lg px-3 py-2">
-              <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-              <p className="text-xs text-amber-300">Low confidence — please review before acting on these insights.</p>
+          {(insight.status === "needs_review" || needsHumanReview) && (
+            <div className="flex items-center gap-2 bg-[#fef3c7] border border-[#F59E0B]/30 rounded-xl px-3 py-2">
+              <AlertTriangle className="w-3.5 h-3.5 text-[#d97706] shrink-0" />
+              <p className="text-xs text-[#92400e]">Low confidence — please review before acting on these insights.</p>
             </div>
           )}
 
           {insight.aiModelUsed && (
-            <p className="text-[11px] text-gray-600">Model: {insight.aiModelUsed}</p>
+            <p className="text-[11px] text-[#94A3B8]">
+              Generated by: {insight.aiModelUsed} · {new Date(insight.createdAt).toLocaleString()}
+            </p>
           )}
 
           {insight.failureReason && (
-            <p className="text-xs text-red-400 bg-red-950/30 rounded px-2 py-1">{insight.failureReason}</p>
+            <p className="text-xs text-[#DC2626] bg-[#fee2e2] rounded-xl px-2 py-1">{insight.failureReason}</p>
           )}
         </div>
       )}
@@ -333,17 +301,17 @@ function Field({ label, value }: { label: string; value: string | null | undefin
   if (!value) return null;
   return (
     <div>
-      <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-0.5">{label}</p>
-      <p className="text-xs text-gray-300">{value}</p>
+      <p className="text-[10px] font-semibold text-[#475569] uppercase tracking-wider mb-0.5">{label}</p>
+      <p className="text-xs text-[#0F172A]">{value}</p>
     </div>
   );
 }
 
 function StatusBadge({ status }: { status: Status }) {
   const map = {
-    completed:    { icon: CheckCircle, cls: "text-emerald-400", label: "Completed" },
-    needs_review: { icon: AlertTriangle, cls: "text-amber-400", label: "Needs Review" },
-    failed:       { icon: AlertTriangle, cls: "text-red-400", label: "Failed" },
+    completed:    { icon: CheckCircle,   cls: "text-[#16A34A]", label: "Completed" },
+    needs_review: { icon: AlertTriangle, cls: "text-[#d97706]", label: "Needs Review" },
+    failed:       { icon: AlertTriangle, cls: "text-[#DC2626]", label: "Failed" },
   };
   const { icon: Icon, cls, label } = map[status] ?? map.failed;
   return (
@@ -355,14 +323,15 @@ function StatusBadge({ status }: { status: Status }) {
 
 function UrgencyBadge({ urgency }: { urgency: Urgency }) {
   const map: Record<Urgency, string> = {
-    high:    "text-red-400 bg-red-950/40",
-    medium:  "text-yellow-400 bg-yellow-950/40",
-    low:     "text-emerald-400 bg-emerald-950/40",
-    unknown: "text-gray-500 bg-gray-800",
+    high:    "text-[#DC2626] bg-[#fee2e2]",
+    medium:  "text-[#d97706] bg-[#fef3c7]",
+    low:     "text-[#16A34A] bg-[#dcfce7]",
+    unknown: "text-[#94A3B8] bg-slate-100",
   };
   return (
-    <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded capitalize ${map[urgency]}`}>
+    <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-lg capitalize ${map[urgency]}`}>
       {urgency} urgency
     </span>
   );
 }
+

@@ -1,13 +1,14 @@
 import { cn } from "@/lib/utils";
 
-type Variant = "green" | "red" | "yellow" | "blue" | "gray";
+type Variant = "green" | "red" | "yellow" | "blue" | "gray" | "turquoise";
 
 const variants: Record<Variant, string> = {
-  green:  "bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/20",
-  red:    "bg-red-500/10    text-red-400    ring-1 ring-red-500/20",
-  yellow: "bg-yellow-500/10 text-yellow-400 ring-1 ring-yellow-500/20",
-  blue:   "bg-indigo-500/10 text-indigo-400 ring-1 ring-indigo-500/20",
-  gray:   "bg-gray-500/10   text-gray-400   ring-1 ring-gray-500/20",
+  green:     "bg-[#dcfce7] text-[#16A34A] ring-1 ring-[#16A34A]/20",
+  red:       "bg-[#fee2e2] text-[#DC2626] ring-1 ring-[#DC2626]/20",
+  yellow:    "bg-[#fef3c7] text-[#d97706] ring-1 ring-[#F59E0B]/20",
+  blue:      "bg-[#dbeafe] text-[#0F4C81] ring-1 ring-[#0F4C81]/20",
+  turquoise: "bg-[#e6f8fc] text-[#00B8D9] ring-1 ring-[#00B8D9]/20",
+  gray:      "bg-slate-100 text-[#475569] ring-1 ring-slate-200",
 };
 
 export function Badge({
@@ -22,7 +23,7 @@ export function Badge({
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium",
+        "inline-flex items-center rounded-lg px-2 py-0.5 text-xs font-medium",
         variants[variant],
         className
       )}
@@ -35,7 +36,7 @@ export function Badge({
 export function roleBadge(role: string) {
   const map: Record<string, Variant> = {
     platform_admin: "blue",
-    tenant_admin:   "green",
+    tenant_admin:   "turquoise",
     manager:        "yellow",
     booth_user:     "gray",
   };
