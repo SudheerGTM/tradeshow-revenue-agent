@@ -93,22 +93,65 @@ export async function searchPerson(params: {
   lastName?: string;
   email?: string;
   companyName?: string;
+  organizationId?: string;
 }): Promise<ApolloContactResult | null> {
   if (!params.firstName && !params.email) return null;
 
-  const body: Record<string, unknown> = { page: 1, per_page: 1 };
-  if (params.email) body.q_emails = [params.email];
-  if (params.firstName) body.q_person_name = [params.firstName, params.lastName].filter(Boolean).join(" ");
-  if (params.companyName) body.q_organization_name = params.companyName;
+  // Apollo ANDs all filters together, so a hard email match combined with
+  // name/company filters returns zero results if the email is wrong —
+  // which is common for trade-show leads (reps often capture placeholder
+  // emails like "test@test.com" on the show floor). Name + company is a
+  // far more reliable signal in this context, so search on that first and
+  // only fall back to an email-based search if it's the only thing we have.
+  //
+  // Linking by organization_id (resolved from a prior company search) is
+  // far more reliable than a free-text q_organization_name match on people
+  // search — Apollo's people index is keyed off the org's canonical ID, not
+  // an arbitrary name string, so pass it whenever the caller has one.
+  if (params.firstName) {
+    const nameBody: Record<string, unknown> = {
+      page: 1, per_page: 1,
+      q_person_name: [params.firstName, params.lastName].filter(Boolean).join(" "),
+    };
+    if (params.organizationId) {
+      nameBody.organization_ids = [params.organizationId];
+    } else if (params.companyName) {
+      nameBody.q_organization_name = params.companyName;
+    }
 
-  const data = await apolloPost("/people/search", body) as {
-    people?: ApolloPerson[];
-  };
+    const nameData = await apolloPost("/people/search", nameBody) as { people?: ApolloPerson[] };
+    let nameMatch = nameData.people?.[0];
 
-  const person = data.people?.[0];
-  if (!person) return null;
+    // If filtering by organization returned nothing, retry on name alone —
+    // the org filter may be too strict (e.g. subsidiary/trading name mismatch).
+    if (!nameMatch && (params.organizationId || params.companyName)) {
+      const looseData = await apolloPost("/people/search", {
+        page: 1, per_page: 1,
+        q_person_name: [params.firstName, params.lastName].filter(Boolean).join(" "),
+      }) as { people?: ApolloPerson[] };
+      nameMatch = looseData.people?.[0];
+    }
 
-  return mapPerson(person);
+    if (nameMatch) return mapPerson(nameMatch);
+  }
+
+  if (params.email && isLikelyRealEmail(params.email)) {
+    const emailData = await apolloPost("/people/search", {
+      page: 1, per_page: 1, q_emails: [params.email],
+    }) as { people?: ApolloPerson[] };
+    const emailMatch = emailData.people?.[0];
+    if (emailMatch) return mapPerson(emailMatch);
+  }
+
+  return null;
+}
+
+// Filters out obvious placeholder/test addresses captured on the show floor
+// (test@test.com, n/a@x.com, etc.) so they don't get used as a search filter.
+function isLikelyRealEmail(email: string): boolean {
+  const lower = email.toLowerCase();
+  const junkPatterns = ["test@", "@test.com", "n/a", "example.com", "noemail", "none@", "fake@"];
+  return !junkPatterns.some(p => lower.includes(p));
 }
 
 // ─── enrichLead ───────────────────────────────────────────────────────────────
@@ -120,15 +163,19 @@ export async function enrichLead(lead: {
   companyName: string;
   website?: string | null;
 }): Promise<EnrichLeadResult> {
-  const [company, contact] = await Promise.allSettled([
-    searchCompany(lead.companyName, lead.website ?? undefined),
-    searchPerson({
-      firstName: lead.firstName,
-      lastName: lead.lastName ?? undefined,
-      email: lead.email ?? undefined,
-      companyName: lead.companyName,
-    }),
-  ]);
+  // Company search runs first (not in parallel) so its resolved Apollo
+  // organization ID can be used to scope the person search — matching by
+  // org ID is far more reliable than a free-text company name on
+  // /people/search, which is keyed off canonical organization records.
+  const company = await settle(searchCompany(lead.companyName, lead.website ?? undefined));
+
+  const contact = await settle(searchPerson({
+    firstName: lead.firstName,
+    lastName: lead.lastName ?? undefined,
+    email: lead.email ?? undefined,
+    companyName: lead.companyName,
+    organizationId: company.status === "fulfilled" ? company.value?.apolloId ?? undefined : undefined,
+  }));
 
   const companyResult = company.status === "fulfilled" ? company.value : null;
   const contactResult = contact.status === "fulfilled" ? contact.value : null;
@@ -233,4 +280,16 @@ function toRevenueRange(n: number): string {
 
 function cleanDomain(url: string): string {
   return url.replace(/^https?:\/\//, "").replace(/\/.*$/, "").trim();
+}
+
+// Wraps a single promise in the same { status, value | reason } shape
+// Promise.allSettled produces, so error handling stays consistent even
+// though company/contact lookups now run sequentially instead of in parallel.
+async function settle<T>(promise: Promise<T>): Promise<{ status: "fulfilled"; value: T } | { status: "rejected"; reason: unknown }> {
+  try {
+    const value = await promise;
+    return { status: "fulfilled", value };
+  } catch (reason) {
+    return { status: "rejected", reason };
+  }
 }
