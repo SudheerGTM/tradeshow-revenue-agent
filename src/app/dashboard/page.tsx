@@ -7,7 +7,7 @@ import {
   Users, Star, Mail, Mic, FileText, CheckCircle, XCircle, Clock,
   Brain, AlertTriangle, Zap, Package, Sparkles, Building2, TrendingUp,
   CalendarDays, BarChart2, Flame, Thermometer, Snowflake, Inbox,
-  RefreshCw, Briefcase, ClipboardList,
+  RefreshCw, Briefcase, ClipboardList, Trophy, ThumbsDown, Kanban,
 } from "lucide-react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/Badge";
@@ -33,6 +33,10 @@ export default async function DashboardPage() {
   let topScoredLeads: { id: string; firstName: string; lastName: string | null; companyName: string; score: string; classification: string; expectedRevenue: string | null }[] = [];
   let followupStats = { total: 0, highPriority: 0, needsReview: 0, approved: 0, draft: 0 };
   let crmStats = { pending: 0, completed: 0, failed: 0, dealsCreated: 0, tasksCreated: 0 };
+  let oppStats = { openPipeline: 0, expectedRevenue: 0, created: 0, won: 0, lost: 0, avgValue: 0 };
+  let oppByStage: { stage: string; count: number }[] = [];
+  let topOpportunities: { id: string; opportunityName: string; expectedRevenue: string | null }[] = [];
+  let hotLeadsWithoutOpp = 0;
 
   if (session?.user?.tenantId) {
     const tenantId = session.user.tenantId;
@@ -235,6 +239,68 @@ export default async function DashboardPage() {
       .from(schema.crmSyncJobs)
       .where(and(eq(schema.crmSyncJobs.tenantId, tenantId), sql`${schema.crmSyncJobs.hubspotTaskId} IS NOT NULL`));
     crmStats.tasksCreated = tasksRow?.count ?? 0;
+
+    // Opportunity & pipeline stats
+    const [openPipelineRow] = await db
+      .select({ sum: sql<string>`coalesce(sum(amount), 0)`, count: sql<number>`count(*)::int` })
+      .from(schema.opportunities)
+      .where(and(eq(schema.opportunities.tenantId, tenantId), eq(schema.opportunities.status, "active")));
+    oppStats.openPipeline = Math.round(parseFloat(openPipelineRow?.sum ?? "0"));
+
+    const [expectedRevRow] = await db
+      .select({ sum: sql<string>`coalesce(sum(expected_revenue), 0)` })
+      .from(schema.opportunities)
+      .where(and(eq(schema.opportunities.tenantId, tenantId), eq(schema.opportunities.status, "active")));
+    oppStats.expectedRevenue = Math.round(parseFloat(expectedRevRow?.sum ?? "0"));
+
+    const [createdRow] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(schema.opportunities)
+      .where(eq(schema.opportunities.tenantId, tenantId));
+    oppStats.created = createdRow?.count ?? 0;
+
+    const [wonRow] = await db
+      .select({ count: sql<number>`count(*)::int`, sum: sql<string>`coalesce(sum(amount), 0)` })
+      .from(schema.opportunities)
+      .where(and(eq(schema.opportunities.tenantId, tenantId), eq(schema.opportunities.status, "won")));
+    oppStats.won = wonRow?.count ?? 0;
+
+    const [lostRow] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(schema.opportunities)
+      .where(and(eq(schema.opportunities.tenantId, tenantId), eq(schema.opportunities.status, "lost")));
+    oppStats.lost = lostRow?.count ?? 0;
+
+    oppStats.avgValue = oppStats.created > 0 ? Math.round(openPipelineRow ? parseFloat(openPipelineRow.sum) / oppStats.created : 0) : 0;
+
+    const stageRows = await db
+      .select({ stage: schema.opportunities.stage, count: sql<number>`count(*)::int` })
+      .from(schema.opportunities)
+      .where(and(eq(schema.opportunities.tenantId, tenantId), eq(schema.opportunities.status, "active")))
+      .groupBy(schema.opportunities.stage);
+    oppByStage = stageRows;
+
+    topOpportunities = await db
+      .select({ id: schema.opportunities.id, opportunityName: schema.opportunities.opportunityName, expectedRevenue: schema.opportunities.expectedRevenue })
+      .from(schema.opportunities)
+      .where(and(eq(schema.opportunities.tenantId, tenantId), eq(schema.opportunities.status, "active")))
+      .orderBy(desc(schema.opportunities.expectedRevenue))
+      .limit(5);
+
+    // Hot leads without an opportunity yet
+    const hotLeadsSq = db
+      .selectDistinctOn([schema.leadScores.leadId], { leadId: schema.leadScores.leadId, classification: schema.leadScores.classification })
+      .from(schema.leadScores)
+      .where(eq(schema.leadScores.tenantId, tenantId))
+      .orderBy(schema.leadScores.leadId, desc(schema.leadScores.createdAt))
+      .as("hot_leads_sq");
+
+    const hotWithoutOppRows = await db
+      .select({ leadId: hotLeadsSq.leadId })
+      .from(hotLeadsSq)
+      .leftJoin(schema.opportunities, and(eq(schema.opportunities.leadId, hotLeadsSq.leadId), eq(schema.opportunities.tenantId, tenantId)))
+      .where(and(eq(hotLeadsSq.classification, "hot"), sql`${schema.opportunities.id} IS NULL`));
+    hotLeadsWithoutOpp = hotWithoutOppRows.length;
   }
 
   const tenantName = tenant?.name ?? (session?.user?.role === "platform_admin" ? "Platform Overview" : slug);
@@ -406,6 +472,59 @@ export default async function DashboardPage() {
           <KpiCard icon={XCircle}         label="CRM Sync Failed"    value={crmStats.failed}       color="danger"    href="/crm-sync" />
           <KpiCard icon={Briefcase}       label="Deals Created"      value={crmStats.dealsCreated} color="blue"      href="/crm-sync" />
           <KpiCard icon={ClipboardList}   label="Tasks Created"      value={crmStats.tasksCreated} color="warning"   href="/crm-sync" />
+        </div>
+      </div>
+
+      {/* Pipeline & Opportunities row */}
+      <div>
+        <SectionHeader title="Pipeline & Opportunities" icon={Kanban} href="/pipeline" />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-3">
+          <KpiCard icon={TrendingUp} label="Open Pipeline"    value={`£${(oppStats.openPipeline / 1000).toFixed(0)}k`}    color="blue"      href="/opportunities" />
+          <KpiCard icon={Zap}        label="Expected Revenue" value={`£${(oppStats.expectedRevenue / 1000).toFixed(0)}k`} color="success"   href="/opportunities" />
+          <KpiCard icon={Trophy}     label="Won Opportunities" value={oppStats.won}  color="success" href="/opportunities?status=won" />
+          <KpiCard icon={ThumbsDown} label="Lost Opportunities" value={oppStats.lost} color="danger"  href="/opportunities?status=lost" />
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-4">
+          <KpiCard icon={Briefcase}  label="Opportunities Created" value={oppStats.created} color="turquoise" href="/opportunities" />
+          <KpiCard icon={AlertTriangle} label="Hot Leads Without Opportunity" value={hotLeadsWithoutOpp} color="warning" href="/leads?classification=hot" />
+          <KpiCard icon={TrendingUp} label="Avg. Opportunity Value" value={oppStats.avgValue > 0 ? `£${oppStats.avgValue.toLocaleString("en-GB")}` : "—"} color="blue" href="/opportunities" />
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
+          {/* Pipeline by stage */}
+          <div className="bg-white rounded-xl border border-[#E2E8F0] p-4 shadow-sm">
+            <p className="text-xs font-semibold text-[#475569] uppercase tracking-wider mb-3">Pipeline by Stage</p>
+            {oppByStage.length === 0 ? (
+              <p className="text-xs text-[#94A3B8]">No active opportunities yet</p>
+            ) : (
+              <div className="space-y-1.5">
+                {oppByStage.map((s, i) => (
+                  <div key={i} className="flex items-center justify-between">
+                    <span className="text-xs text-[#0F172A] capitalize">{s.stage.replace(/_/g, " ")}</span>
+                    <Badge variant="blue">{s.count}</Badge>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Top opportunities */}
+          <div className="bg-white rounded-xl border border-[#E2E8F0] p-4 shadow-sm">
+            <p className="text-xs font-semibold text-[#475569] uppercase tracking-wider mb-3">Top Opportunities</p>
+            {topOpportunities.length === 0 ? (
+              <p className="text-xs text-[#94A3B8]">No opportunities yet</p>
+            ) : (
+              <div className="space-y-2">
+                {topOpportunities.map((o) => (
+                  <Link key={o.id} href={`/opportunities/${o.id}`} className="flex items-center justify-between group">
+                    <span className="text-xs text-[#0F172A] group-hover:text-[#0F4C81] truncate">{o.opportunityName}</span>
+                    <span className="text-xs font-semibold text-[#16A34A] shrink-0 ml-2">
+                      {o.expectedRevenue != null ? `£${parseFloat(o.expectedRevenue).toLocaleString("en-GB", { maximumFractionDigits: 0 })}` : "—"}
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

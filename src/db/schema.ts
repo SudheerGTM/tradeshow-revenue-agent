@@ -517,6 +517,98 @@ export const crmSyncJobs = pgTable(
   ]
 );
 
+// ─── Opportunities ───────────────────────────────────────────────────────────
+
+export const opportunityStageEnum = pgEnum("opportunity_stage", [
+  "identified", "qualified", "meeting_scheduled", "proposal_requested",
+  "proposal_sent", "negotiation", "won", "lost",
+]);
+
+export const opportunityPriorityEnum = pgEnum("opportunity_priority", [
+  "high", "medium", "low",
+]);
+
+export const opportunitySourceEnum = pgEnum("opportunity_source", [
+  "trade_show", "manual", "crm_sync",
+]);
+
+export const opportunityStatusEnum = pgEnum("opportunity_status", [
+  "active", "won", "lost", "archived",
+]);
+
+export const opportunityActivityTypeEnum = pgEnum("opportunity_activity_type", [
+  "note", "call", "email", "meeting", "task", "stage_change", "crm_sync", "follow_up",
+]);
+
+export const opportunities = pgTable(
+  "opportunities",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+    eventId: uuid("event_id").references(() => events.id, { onDelete: "set null" }),
+    leadId: uuid("lead_id").notNull().references(() => leads.id, { onDelete: "cascade" }),
+    leadScoreId: uuid("lead_score_id").references(() => leadScores.id, { onDelete: "set null" }),
+    crmSyncJobId: uuid("crm_sync_job_id").references(() => crmSyncJobs.id, { onDelete: "set null" }),
+
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    ownerUserId: uuid("owner_user_id").references(() => users.id, { onDelete: "set null" }),
+
+    opportunityName: varchar("opportunity_name", { length: 500 }).notNull(),
+    companyName: varchar("company_name", { length: 255 }).notNull(),
+    contactName: varchar("contact_name", { length: 255 }),
+
+    stage: opportunityStageEnum("stage").notNull().default("identified"),
+    priority: opportunityPriorityEnum("priority").notNull().default("medium"),
+
+    amount: numeric("amount", { precision: 12, scale: 2 }),
+    probability: numeric("probability", { precision: 5, scale: 4 }),
+    expectedRevenue: numeric("expected_revenue", { precision: 12, scale: 2 }),
+
+    expectedCloseDate: date("expected_close_date"),
+
+    source: opportunitySourceEnum("source").notNull().default("trade_show"),
+
+    nextStep: text("next_step"),
+    riskNotes: text("risk_notes"),
+    aiRecommendation: text("ai_recommendation"),
+
+    status: opportunityStatusEnum("status").notNull().default("active"),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("opp_tenant_idx").on(t.tenantId),
+    index("opp_lead_idx").on(t.leadId),
+    index("opp_stage_idx").on(t.tenantId, t.stage),
+    index("opp_status_idx").on(t.tenantId, t.status),
+    index("opp_owner_idx").on(t.tenantId, t.ownerUserId),
+    index("opp_created_idx").on(t.tenantId, t.createdAt),
+  ]
+);
+
+export const opportunityActivities = pgTable(
+  "opportunity_activities",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+    opportunityId: uuid("opportunity_id").notNull().references(() => opportunities.id, { onDelete: "cascade" }),
+    leadId: uuid("lead_id").notNull().references(() => leads.id, { onDelete: "cascade" }),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+
+    activityType: opportunityActivityTypeEnum("activity_type").notNull(),
+    description: text("description").notNull(),
+    metadata: jsonb("metadata"),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("oa_tenant_idx").on(t.tenantId),
+    index("oa_opportunity_idx").on(t.opportunityId),
+    index("oa_created_idx").on(t.opportunityId, t.createdAt),
+  ]
+);
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type Tenant = typeof tenants.$inferSelect;
@@ -560,3 +652,12 @@ export type CrmSyncJob = typeof crmSyncJobs.$inferSelect;
 export type NewCrmSyncJob = typeof crmSyncJobs.$inferInsert;
 export type CrmSyncType = "contact" | "company" | "deal" | "task" | "full_sync";
 export type CrmSyncStatus = "pending_approval" | "approved" | "queued" | "processing" | "completed" | "failed";
+export type Opportunity = typeof opportunities.$inferSelect;
+export type NewOpportunity = typeof opportunities.$inferInsert;
+export type OpportunityStage = "identified" | "qualified" | "meeting_scheduled" | "proposal_requested" | "proposal_sent" | "negotiation" | "won" | "lost";
+export type OpportunityPriority = "high" | "medium" | "low";
+export type OpportunitySource = "trade_show" | "manual" | "crm_sync";
+export type OpportunityStatus = "active" | "won" | "lost" | "archived";
+export type OpportunityActivity = typeof opportunityActivities.$inferSelect;
+export type NewOpportunityActivity = typeof opportunityActivities.$inferInsert;
+export type OpportunityActivityType = "note" | "call" | "email" | "meeting" | "task" | "stage_change" | "crm_sync" | "follow_up";

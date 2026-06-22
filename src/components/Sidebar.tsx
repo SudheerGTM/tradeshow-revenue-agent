@@ -18,6 +18,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Zap,
+  Briefcase,
+  Kanban,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
@@ -41,13 +43,15 @@ const NAV: NavItem[] = [
   { href: "/lead-scoring",       label: "Lead Scoring",            icon: Star,            release: 8 },
   { href: "/followups",          label: "Follow-Ups",              icon: Mail,            release: 9 },
   { href: "/crm-sync",           label: "CRM Sync",                icon: RefreshCw,       release: 10 },
-  { href: "/roi-analytics",      label: "ROI Analytics",           icon: BarChart2,       release: 11 },
+  { href: "/opportunities",      label: "Opportunities",           icon: Briefcase,       release: 11 },
+  { href: "/pipeline",           label: "Pipeline Board",          icon: Kanban,          release: 11 },
+  { href: "/roi-analytics",      label: "ROI Analytics",           icon: BarChart2,       release: 12 },
   { href: "/admin/tenants",      label: "Tenants",                 icon: Zap,             release: 2, roles: ["platform_admin"] },
   { href: "/admin/users",        label: "Users",                   icon: ShieldCheck,     release: 2, roles: ["platform_admin", "tenant_admin", "manager"] },
   { href: "/settings/tenant",    label: "Settings",                icon: Settings,        release: 2 },
 ];
 
-const CURRENT_RELEASE = 10;
+const CURRENT_RELEASE = 11;
 
 export function Sidebar({ role }: { role: string }) {
   const pathname = usePathname();
