@@ -1,12 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, CalendarDays, MapPin, RefreshCw } from "lucide-react";
-import { Badge, statusBadge } from "@/components/ui/Badge";
+import Link from "next/link";
+import { Plus, CalendarDays, MapPin, DollarSign, BarChart3, FileText } from "lucide-react";
+import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Modal } from "@/components/ui/Modal";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { Input, Select } from "@/components/ui/Input";
+import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import type { Event } from "@/db/schema";
 
@@ -38,13 +39,13 @@ export function EventsClient({ initial, canCreate }: { initial: Event[]; canCrea
       />
 
       {events.length === 0 ? (
-        <div className="bg-gray-900 border border-gray-800 rounded-xl">
+        <div className="bg-white border border-[#E2E8F0] rounded-xl shadow-sm">
           <EmptyState
             icon={CalendarDays}
             title="No events yet"
             description="Create your first event to start capturing leads."
             action={canCreate ? (
-              <button onClick={() => setShowCreate(true)} className="text-sm text-indigo-400 hover:text-indigo-300">
+              <button onClick={() => setShowCreate(true)} className="text-sm text-[#00B8D9] hover:text-[#009ab8] font-medium">
                 Create event →
               </button>
             ) : undefined}
@@ -53,25 +54,35 @@ export function EventsClient({ initial, canCreate }: { initial: Event[]; canCrea
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {events.map((ev) => (
-            <div key={ev.id} className="bg-gray-900 border border-gray-800 rounded-xl p-5 space-y-3">
+            <div key={ev.id} className="bg-white border border-[#E2E8F0] rounded-xl p-5 space-y-3 shadow-sm">
               <div className="flex items-start justify-between gap-2">
-                <h3 className="text-sm font-semibold text-white leading-tight">{ev.name}</h3>
+                <h3 className="text-sm font-semibold text-[#0F172A] leading-tight">{ev.name}</h3>
                 <Badge variant={STATUS_COLORS[ev.status] ?? "gray"}>{ev.status}</Badge>
               </div>
               {ev.location && (
-                <div className="flex items-center gap-1.5 text-xs text-gray-400">
+                <div className="flex items-center gap-1.5 text-xs text-[#475569]">
                   <MapPin className="w-3.5 h-3.5 shrink-0" />
                   {ev.location}
                 </div>
               )}
               {(ev.startDate || ev.endDate) && (
-                <div className="flex items-center gap-1.5 text-xs text-gray-400">
+                <div className="flex items-center gap-1.5 text-xs text-[#475569]">
                   <CalendarDays className="w-3.5 h-3.5 shrink-0" />
                   {ev.startDate ?? "—"} → {ev.endDate ?? "—"}
                 </div>
               )}
-              <div className="pt-1">
-                <p className="text-[10px] font-mono text-gray-600">/{ev.slug}</p>
+              <p className="text-[10px] font-mono text-[#CBD5E1]">/{ev.slug}</p>
+
+              <div className="flex items-center gap-3 pt-2 border-t border-[#F1F5F9]">
+                <Link href={`/events/${ev.id}/costs`} className="flex items-center gap-1 text-xs text-[#475569] hover:text-[#0F4C81] transition">
+                  <DollarSign className="w-3.5 h-3.5" /> Costs
+                </Link>
+                <Link href={`/analytics/event/${ev.id}`} className="flex items-center gap-1 text-xs text-[#475569] hover:text-[#0F4C81] transition">
+                  <BarChart3 className="w-3.5 h-3.5" /> ROI
+                </Link>
+                <Link href={`/events/${ev.id}/report`} className="flex items-center gap-1 text-xs text-[#475569] hover:text-[#0F4C81] transition">
+                  <FileText className="w-3.5 h-3.5" /> Report
+                </Link>
               </div>
             </div>
           ))}
@@ -122,7 +133,7 @@ function CreateEventForm({ onCreated }: { onCreated: (ev: Event) => void }) {
           onChange={(e) => setForm(p => ({ ...p, endDate: e.target.value }))} />
       </div>
       {error && (
-        <p className="text-xs text-red-400 bg-red-950/40 border border-red-900 rounded-lg px-3 py-2">{error}</p>
+        <p className="text-xs text-[#DC2626] bg-[#fee2e2] border border-[#DC2626]/20 rounded-xl px-3 py-2">{error}</p>
       )}
       <Button type="submit" loading={loading} className="w-full">Create Event</Button>
     </form>

@@ -51,7 +51,7 @@ const NAV: NavItem[] = [
   { href: "/settings/tenant",    label: "Settings",                icon: Settings,        release: 2 },
 ];
 
-const CURRENT_RELEASE = 11;
+const CURRENT_RELEASE = 12;
 
 export function Sidebar({ role }: { role: string }) {
   const pathname = usePathname();

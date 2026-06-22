@@ -8,9 +8,11 @@ import {
   Brain, AlertTriangle, Zap, Package, Sparkles, Building2, TrendingUp,
   CalendarDays, BarChart2, Flame, Thermometer, Snowflake, Inbox,
   RefreshCw, Briefcase, ClipboardList, Trophy, ThumbsDown, Kanban,
+  DollarSign, BarChart3,
 } from "lucide-react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/Badge";
+import { recalculateAndStoreROI } from "@/lib/agents/roi-agent";
 
 export default async function DashboardPage() {
   const session = await auth();
@@ -37,6 +39,8 @@ export default async function DashboardPage() {
   let oppByStage: { stage: string; count: number }[] = [];
   let topOpportunities: { id: string; opportunityName: string; expectedRevenue: string | null }[] = [];
   let hotLeadsWithoutOpp = 0;
+  let roiStats = { totalEventCost: 0, totalPipeline: 0, expectedRevenue: 0, wonRevenue: 0, roiPercentage: null as number | null };
+  let bestEvent: { name: string; roiPercentage: number } | null = null;
 
   if (session?.user?.tenantId) {
     const tenantId = session.user.tenantId;
@@ -301,6 +305,24 @@ export default async function DashboardPage() {
       .leftJoin(schema.opportunities, and(eq(schema.opportunities.leadId, hotLeadsSq.leadId), eq(schema.opportunities.tenantId, tenantId)))
       .where(and(eq(hotLeadsSq.classification, "hot"), sql`${schema.opportunities.id} IS NULL`));
     hotLeadsWithoutOpp = hotWithoutOppRows.length;
+
+    // ROI analytics — aggregate across all tenant events
+    const tenantEvents = await db.select({ id: schema.events.id, name: schema.events.name }).from(schema.events).where(eq(schema.events.tenantId, tenantId));
+    let bestRoi = -Infinity;
+    for (const ev of tenantEvents) {
+      const { result } = await recalculateAndStoreROI(ev.id, tenantId, session.user.id);
+      roiStats.totalEventCost += result.totalEventCost;
+      roiStats.totalPipeline += result.pipelineGenerated;
+      roiStats.expectedRevenue += result.expectedRevenue;
+      roiStats.wonRevenue += result.wonRevenue;
+      if (result.roiPercentage != null && result.roiPercentage > bestRoi) {
+        bestRoi = result.roiPercentage;
+        bestEvent = { name: ev.name, roiPercentage: result.roiPercentage };
+      }
+    }
+    roiStats.roiPercentage = roiStats.totalEventCost > 0
+      ? Math.round(((roiStats.wonRevenue - roiStats.totalEventCost) / roiStats.totalEventCost) * 10000) / 100
+      : null;
   }
 
   const tenantName = tenant?.name ?? (session?.user?.role === "platform_admin" ? "Platform Overview" : slug);
@@ -473,6 +495,24 @@ export default async function DashboardPage() {
           <KpiCard icon={Briefcase}       label="Deals Created"      value={crmStats.dealsCreated} color="blue"      href="/crm-sync" />
           <KpiCard icon={ClipboardList}   label="Tasks Created"      value={crmStats.tasksCreated} color="warning"   href="/crm-sync" />
         </div>
+      </div>
+
+      {/* ROI Analytics row */}
+      <div>
+        <SectionHeader title="ROI Analytics" icon={BarChart3} href="/roi-analytics" />
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mt-3">
+          <KpiCard icon={DollarSign} label="Total Event Cost" value={`£${(roiStats.totalEventCost / 1000).toFixed(0)}k`} color="blue"      href="/roi-analytics" />
+          <KpiCard icon={TrendingUp} label="Total Pipeline"   value={`£${(roiStats.totalPipeline / 1000).toFixed(0)}k`}   color="turquoise" href="/roi-analytics" />
+          <KpiCard icon={Zap}        label="Expected Revenue" value={`£${(roiStats.expectedRevenue / 1000).toFixed(0)}k`} color="success"   href="/roi-analytics" />
+          <KpiCard icon={Trophy}     label="Won Revenue"      value={`£${(roiStats.wonRevenue / 1000).toFixed(0)}k`}      color="success"   href="/roi-analytics" />
+          <KpiCard icon={BarChart3}  label="ROI %"            value={roiStats.roiPercentage != null ? `${roiStats.roiPercentage}%` : "n/a"} color={roiStats.roiPercentage != null && roiStats.roiPercentage >= 0 ? "success" : "danger"} href="/roi-analytics" />
+        </div>
+        {bestEvent && (
+          <div className="bg-white rounded-xl border border-[#16A34A]/30 p-4 shadow-sm mt-4 flex items-center gap-3">
+            <Trophy className="w-5 h-5 text-[#16A34A] shrink-0" />
+            <p className="text-sm text-[#0F172A]"><span className="font-semibold">Best Performing Event:</span> {bestEvent.name} ({bestEvent.roiPercentage}% ROI)</p>
+          </div>
+        )}
       </div>
 
       {/* Pipeline & Opportunities row */}

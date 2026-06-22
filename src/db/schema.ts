@@ -11,6 +11,7 @@ import {
   date,
   doublePrecision,
   numeric,
+  integer,
 } from "drizzle-orm/pg-core";
 
 // ─── Enums ────────────────────────────────────────────────────────────────────
@@ -609,6 +610,71 @@ export const opportunityActivities = pgTable(
   ]
 );
 
+// ─── Event Cost Tracking & ROI Analytics ───────────────────────────────────
+
+export const eventCostCategoryEnum = pgEnum("event_cost_category", [
+  "booth", "travel", "hotel", "marketing", "sponsorship", "staff", "collateral", "other",
+]);
+
+export const eventCosts = pgTable(
+  "event_costs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+    eventId: uuid("event_id").notNull().references(() => events.id, { onDelete: "cascade" }),
+
+    costCategory: eventCostCategoryEnum("cost_category").notNull().default("other"),
+    description: text("description"),
+    amount: numeric("amount", { precision: 12, scale: 2 }).notNull().default("0"),
+
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("ec_tenant_idx").on(t.tenantId),
+    index("ec_event_idx").on(t.eventId),
+  ]
+);
+
+export const eventRoiMetrics = pgTable(
+  "event_roi_metrics",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+    eventId: uuid("event_id").notNull().references(() => events.id, { onDelete: "cascade" }),
+
+    totalEventCost: numeric("total_event_cost", { precision: 12, scale: 2 }).notNull().default("0"),
+    totalLeads: integer("total_leads").notNull().default(0),
+    qualifiedLeads: integer("qualified_leads").notNull().default(0),
+    hotLeads: integer("hot_leads").notNull().default(0),
+    opportunitiesCreated: integer("opportunities_created").notNull().default(0),
+
+    pipelineGenerated: numeric("pipeline_generated", { precision: 12, scale: 2 }).notNull().default("0"),
+    expectedRevenue: numeric("expected_revenue", { precision: 12, scale: 2 }).notNull().default("0"),
+    wonRevenue: numeric("won_revenue", { precision: 12, scale: 2 }).notNull().default("0"),
+    lostRevenue: numeric("lost_revenue", { precision: 12, scale: 2 }).notNull().default("0"),
+
+    roiPercentage: numeric("roi_percentage", { precision: 8, scale: 2 }),
+    costPerLead: numeric("cost_per_lead", { precision: 12, scale: 2 }),
+    costPerQualifiedLead: numeric("cost_per_qualified_lead", { precision: 12, scale: 2 }),
+    costPerOpportunity: numeric("cost_per_opportunity", { precision: 12, scale: 2 }),
+
+    executiveSummary: text("executive_summary"),
+    summaryGeneratedAt: timestamp("summary_generated_at", { withTimezone: true }),
+    summaryConfidenceScore: numeric("summary_confidence_score", { precision: 5, scale: 2 }),
+    summaryModelUsed: varchar("summary_model_used", { length: 200 }),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("erm_tenant_idx").on(t.tenantId),
+    index("erm_event_idx").on(t.eventId),
+  ]
+);
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type Tenant = typeof tenants.$inferSelect;
@@ -661,3 +727,8 @@ export type OpportunityStatus = "active" | "won" | "lost" | "archived";
 export type OpportunityActivity = typeof opportunityActivities.$inferSelect;
 export type NewOpportunityActivity = typeof opportunityActivities.$inferInsert;
 export type OpportunityActivityType = "note" | "call" | "email" | "meeting" | "task" | "stage_change" | "crm_sync" | "follow_up";
+export type EventCost = typeof eventCosts.$inferSelect;
+export type NewEventCost = typeof eventCosts.$inferInsert;
+export type EventCostCategory = "booth" | "travel" | "hotel" | "marketing" | "sponsorship" | "staff" | "collateral" | "other";
+export type EventRoiMetrics = typeof eventRoiMetrics.$inferSelect;
+export type NewEventRoiMetrics = typeof eventRoiMetrics.$inferInsert;
