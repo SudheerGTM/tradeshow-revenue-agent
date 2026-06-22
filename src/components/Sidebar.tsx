@@ -39,7 +39,7 @@ const NAV: NavItem[] = [
   { href: "/conversation-intel", label: "Conversation Intelligence", icon: Brain,         release: 6 },
   { href: "/company-intel",      label: "Company Intelligence",    icon: Building2,       release: 7 },
   { href: "/lead-scoring",       label: "Lead Scoring",            icon: Star,            release: 8 },
-  { href: "/follow-ups",         label: "Follow-Ups",              icon: Mail,            release: 8 },
+  { href: "/followups",          label: "Follow-Ups",              icon: Mail,            release: 9 },
   { href: "/crm-sync",           label: "CRM Sync",                icon: RefreshCw,       release: 9 },
   { href: "/roi-analytics",      label: "ROI Analytics",           icon: BarChart2,       release: 9 },
   { href: "/admin/tenants",      label: "Tenants",                 icon: Zap,             release: 2, roles: ["platform_admin"] },
@@ -47,7 +47,7 @@ const NAV: NavItem[] = [
   { href: "/settings/tenant",    label: "Settings",                icon: Settings,        release: 2 },
 ];
 
-const CURRENT_RELEASE = 7;
+const CURRENT_RELEASE = 9;
 
 export function Sidebar({ role }: { role: string }) {
   const pathname = usePathname();

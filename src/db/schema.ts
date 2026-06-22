@@ -412,6 +412,64 @@ export const leadScores = pgTable(
   ]
 );
 
+// ─── Follow-Up Recommendations ──────────────────────────────────────────────
+
+export const followupTypeEnum = pgEnum("followup_type", [
+  "email", "linkedin", "meeting_request", "phone_call",
+]);
+
+export const followupPriorityEnum = pgEnum("followup_priority", [
+  "high", "medium", "low",
+]);
+
+export const followupTimingEnum = pgEnum("followup_timing", [
+  "immediate", "24_hours", "3_days", "1_week", "2_weeks",
+]);
+
+export const followupStatusEnum = pgEnum("followup_status", [
+  "draft", "approved", "rejected",
+]);
+
+export const followupRecommendations = pgTable(
+  "followup_recommendations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+    eventId: uuid("event_id").references(() => events.id, { onDelete: "set null" }),
+    leadId: uuid("lead_id").notNull().references(() => leads.id, { onDelete: "cascade" }),
+    leadScoreId: uuid("lead_score_id").references(() => leadScores.id, { onDelete: "set null" }),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+
+    followupType: followupTypeEnum("followup_type").notNull(),
+    priority: followupPriorityEnum("priority").notNull().default("medium"),
+    recommendedTiming: followupTimingEnum("recommended_timing").notNull().default("1_week"),
+
+    subjectLine: text("subject_line"),
+    messageContent: text("message_content"),
+    callToAction: text("call_to_action"),
+    reasoning: text("reasoning"),
+    personalizationPoints: jsonb("personalization_points"),
+
+    confidenceScore: numeric("confidence_score", { precision: 5, scale: 2 }),
+    needsHumanReview: boolean("needs_human_review").notNull().default(false),
+
+    status: followupStatusEnum("status").notNull().default("draft"),
+
+    modelUsed: varchar("model_used", { length: 200 }),
+    rawAiResponse: jsonb("raw_ai_response"),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("fr_tenant_idx").on(t.tenantId),
+    index("fr_lead_idx").on(t.leadId),
+    index("fr_status_idx").on(t.tenantId, t.status),
+    index("fr_priority_idx").on(t.tenantId, t.priority),
+    index("fr_created_idx").on(t.tenantId, t.createdAt),
+  ]
+);
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type Tenant = typeof tenants.$inferSelect;
@@ -445,3 +503,9 @@ export type LeadScore = typeof leadScores.$inferSelect;
 export type NewLeadScore = typeof leadScores.$inferInsert;
 export type ScoreClassification = "hot" | "warm" | "cold" | "needs_review";
 export type ScoreStatus = "completed" | "failed" | "needs_review";
+export type FollowupRecommendation = typeof followupRecommendations.$inferSelect;
+export type NewFollowupRecommendation = typeof followupRecommendations.$inferInsert;
+export type FollowupType = "email" | "linkedin" | "meeting_request" | "phone_call";
+export type FollowupPriority = "high" | "medium" | "low";
+export type FollowupTiming = "immediate" | "24_hours" | "3_days" | "1_week" | "2_weeks";
+export type FollowupStatus = "draft" | "approved" | "rejected";

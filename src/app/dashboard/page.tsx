@@ -6,7 +6,7 @@ import { eq, sql, isNull, and, desc } from "drizzle-orm";
 import {
   Users, Star, Mail, Mic, FileText, CheckCircle, XCircle, Clock,
   Brain, AlertTriangle, Zap, Package, Sparkles, Building2, TrendingUp,
-  CalendarDays, BarChart2, Flame, Thermometer, Snowflake,
+  CalendarDays, BarChart2, Flame, Thermometer, Snowflake, Inbox,
 } from "lucide-react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/Badge";
@@ -30,6 +30,7 @@ export default async function DashboardPage() {
   let topCompanySizes: string[] = [];
   let scoreStats = { hot: 0, warm: 0, cold: 0, needsReview: 0, totalPipeline: 0, expectedRevenue: 0 };
   let topScoredLeads: { id: string; firstName: string; lastName: string | null; companyName: string; score: string; classification: string; expectedRevenue: string | null }[] = [];
+  let followupStats = { total: 0, highPriority: 0, needsReview: 0, approved: 0, draft: 0 };
 
   if (session?.user?.tenantId) {
     const tenantId = session.user.tenantId;
@@ -182,6 +183,31 @@ export default async function DashboardPage() {
       .where(and(eq(schema.leadScores.tenantId, tenantId), eq(schema.leadScores.classification, "hot")))
       .orderBy(schema.leadScores.leadId, desc(schema.leadScores.createdAt))
       .limit(5) as typeof topScoredLeads;
+
+    // Follow-up stats
+    const followupByStatus = await db
+      .select({ status: schema.followupRecommendations.status, count: sql<number>`count(*)::int` })
+      .from(schema.followupRecommendations)
+      .where(eq(schema.followupRecommendations.tenantId, tenantId))
+      .groupBy(schema.followupRecommendations.status);
+
+    for (const r of followupByStatus) {
+      followupStats.total += r.count;
+      if (r.status === "approved") followupStats.approved = r.count;
+      else if (r.status === "draft") followupStats.draft = r.count;
+    }
+
+    const [highPriorityRow] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(schema.followupRecommendations)
+      .where(and(eq(schema.followupRecommendations.tenantId, tenantId), eq(schema.followupRecommendations.priority, "high")));
+    followupStats.highPriority = highPriorityRow?.count ?? 0;
+
+    const [followupReviewRow] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(schema.followupRecommendations)
+      .where(and(eq(schema.followupRecommendations.tenantId, tenantId), eq(schema.followupRecommendations.needsHumanReview, true)));
+    followupStats.needsReview = followupReviewRow?.count ?? 0;
   }
 
   const tenantName = tenant?.name ?? (session?.user?.role === "platform_admin" ? "Platform Overview" : slug);
@@ -329,6 +355,18 @@ export default async function DashboardPage() {
               </div>
             )}
           </div>
+        </div>
+      </div>
+
+      {/* Follow-Up Intelligence row */}
+      <div>
+        <SectionHeader title="Follow-Up Intelligence" icon={Mail} href="/followups" />
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mt-3">
+          <KpiCard icon={Inbox}         label="Follow-Ups Generated" value={followupStats.total}        color="blue"      href="/followups" />
+          <KpiCard icon={Flame}         label="High Priority"        value={followupStats.highPriority}  color="danger"    href="/followups" />
+          <KpiCard icon={AlertTriangle} label="Needs Review"         value={followupStats.needsReview}   color="warning"   href="/followups" />
+          <KpiCard icon={CheckCircle}   label="Approved Drafts"      value={followupStats.approved}      color="success"   href="/followups" />
+          <KpiCard icon={Clock}         label="Pending Drafts"       value={followupStats.draft}         color="turquoise" href="/followups" />
         </div>
       </div>
 
