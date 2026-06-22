@@ -7,6 +7,7 @@ import {
   Users, Star, Mail, Mic, FileText, CheckCircle, XCircle, Clock,
   Brain, AlertTriangle, Zap, Package, Sparkles, Building2, TrendingUp,
   CalendarDays, BarChart2, Flame, Thermometer, Snowflake, Inbox,
+  RefreshCw, Briefcase, ClipboardList,
 } from "lucide-react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/Badge";
@@ -31,6 +32,7 @@ export default async function DashboardPage() {
   let scoreStats = { hot: 0, warm: 0, cold: 0, needsReview: 0, totalPipeline: 0, expectedRevenue: 0 };
   let topScoredLeads: { id: string; firstName: string; lastName: string | null; companyName: string; score: string; classification: string; expectedRevenue: string | null }[] = [];
   let followupStats = { total: 0, highPriority: 0, needsReview: 0, approved: 0, draft: 0 };
+  let crmStats = { pending: 0, completed: 0, failed: 0, dealsCreated: 0, tasksCreated: 0 };
 
   if (session?.user?.tenantId) {
     const tenantId = session.user.tenantId;
@@ -208,6 +210,31 @@ export default async function DashboardPage() {
       .from(schema.followupRecommendations)
       .where(and(eq(schema.followupRecommendations.tenantId, tenantId), eq(schema.followupRecommendations.needsHumanReview, true)));
     followupStats.needsReview = followupReviewRow?.count ?? 0;
+
+    // CRM sync stats
+    const crmByStatus = await db
+      .select({ status: schema.crmSyncJobs.syncStatus, count: sql<number>`count(*)::int` })
+      .from(schema.crmSyncJobs)
+      .where(eq(schema.crmSyncJobs.tenantId, tenantId))
+      .groupBy(schema.crmSyncJobs.syncStatus);
+
+    for (const r of crmByStatus) {
+      if (r.status === "pending_approval") crmStats.pending = r.count;
+      else if (r.status === "completed") crmStats.completed = r.count;
+      else if (r.status === "failed") crmStats.failed = r.count;
+    }
+
+    const [dealsRow] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(schema.crmSyncJobs)
+      .where(and(eq(schema.crmSyncJobs.tenantId, tenantId), sql`${schema.crmSyncJobs.hubspotDealId} IS NOT NULL`));
+    crmStats.dealsCreated = dealsRow?.count ?? 0;
+
+    const [tasksRow] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(schema.crmSyncJobs)
+      .where(and(eq(schema.crmSyncJobs.tenantId, tenantId), sql`${schema.crmSyncJobs.hubspotTaskId} IS NOT NULL`));
+    crmStats.tasksCreated = tasksRow?.count ?? 0;
   }
 
   const tenantName = tenant?.name ?? (session?.user?.role === "platform_admin" ? "Platform Overview" : slug);
@@ -367,6 +394,18 @@ export default async function DashboardPage() {
           <KpiCard icon={AlertTriangle} label="Needs Review"         value={followupStats.needsReview}   color="warning"   href="/followups" />
           <KpiCard icon={CheckCircle}   label="Approved Drafts"      value={followupStats.approved}      color="success"   href="/followups" />
           <KpiCard icon={Clock}         label="Pending Drafts"       value={followupStats.draft}         color="turquoise" href="/followups" />
+        </div>
+      </div>
+
+      {/* CRM Sync row */}
+      <div>
+        <SectionHeader title="CRM Sync" icon={RefreshCw} href="/crm-sync" />
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mt-3">
+          <KpiCard icon={Clock}           label="CRM Sync Pending"   value={crmStats.pending}      color="turquoise" href="/crm-sync" />
+          <KpiCard icon={CheckCircle}     label="CRM Sync Completed" value={crmStats.completed}    color="success"   href="/crm-sync" />
+          <KpiCard icon={XCircle}         label="CRM Sync Failed"    value={crmStats.failed}       color="danger"    href="/crm-sync" />
+          <KpiCard icon={Briefcase}       label="Deals Created"      value={crmStats.dealsCreated} color="blue"      href="/crm-sync" />
+          <KpiCard icon={ClipboardList}   label="Tasks Created"      value={crmStats.tasksCreated} color="warning"   href="/crm-sync" />
         </div>
       </div>
 

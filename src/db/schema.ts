@@ -470,6 +470,53 @@ export const followupRecommendations = pgTable(
   ]
 );
 
+// ─── CRM Sync Jobs ───────────────────────────────────────────────────────────
+
+export const crmSyncTypeEnum = pgEnum("crm_sync_type", [
+  "contact", "company", "deal", "task", "full_sync",
+]);
+
+export const crmSyncStatusEnum = pgEnum("crm_sync_status", [
+  "pending_approval", "approved", "queued", "processing", "completed", "failed",
+]);
+
+export const crmSyncJobs = pgTable(
+  "crm_sync_jobs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+    eventId: uuid("event_id").references(() => events.id, { onDelete: "set null" }),
+    leadId: uuid("lead_id").notNull().references(() => leads.id, { onDelete: "cascade" }),
+
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+
+    syncType: crmSyncTypeEnum("sync_type").notNull().default("full_sync"),
+    syncStatus: crmSyncStatusEnum("sync_status").notNull().default("pending_approval"),
+
+    hubspotContactId: varchar("hubspot_contact_id", { length: 255 }),
+    hubspotCompanyId: varchar("hubspot_company_id", { length: 255 }),
+    hubspotDealId: varchar("hubspot_deal_id", { length: 255 }),
+    hubspotTaskId: varchar("hubspot_task_id", { length: 255 }),
+
+    syncPayload: jsonb("sync_payload"),
+    syncResponse: jsonb("sync_response"),
+
+    failureReason: text("failure_reason"),
+
+    approvedByUserId: uuid("approved_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("csj_tenant_idx").on(t.tenantId),
+    index("csj_lead_idx").on(t.leadId),
+    index("csj_status_idx").on(t.tenantId, t.syncStatus),
+    index("csj_created_idx").on(t.tenantId, t.createdAt),
+  ]
+);
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type Tenant = typeof tenants.$inferSelect;
@@ -509,3 +556,7 @@ export type FollowupType = "email" | "linkedin" | "meeting_request" | "phone_cal
 export type FollowupPriority = "high" | "medium" | "low";
 export type FollowupTiming = "immediate" | "24_hours" | "3_days" | "1_week" | "2_weeks";
 export type FollowupStatus = "draft" | "approved" | "rejected";
+export type CrmSyncJob = typeof crmSyncJobs.$inferSelect;
+export type NewCrmSyncJob = typeof crmSyncJobs.$inferInsert;
+export type CrmSyncType = "contact" | "company" | "deal" | "task" | "full_sync";
+export type CrmSyncStatus = "pending_approval" | "approved" | "queued" | "processing" | "completed" | "failed";

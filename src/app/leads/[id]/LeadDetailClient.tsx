@@ -11,6 +11,7 @@ import { ConversationIntelligence } from "@/components/ConversationIntelligence"
 import { EnrichmentPanel } from "@/components/EnrichmentPanel";
 import { LeadScorePanel } from "@/components/LeadScorePanel";
 import { FollowUpPanel } from "@/components/FollowUpPanel";
+import { CRMSyncPanel } from "@/components/CRMSyncPanel";
 import type { Lead } from "@/db/schema";
 
 const STATUS_COLORS: Record<string, "blue" | "yellow" | "green" | "red"> = {
@@ -128,6 +129,9 @@ export function LeadDetailClient({ lead, history, eventName, creatorName, availa
 
           {/* Follow-Up Intelligence */}
           <FollowUpPanel leadId={lead.id} userRole={userRole} />
+
+          {/* CRM Sync */}
+          <CRMSyncPanel leadId={lead.id} userRole={userRole} />
 
           {/* Voice Notes */}
           <VoiceRecorder leadId={lead.id} />
