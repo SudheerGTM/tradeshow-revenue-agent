@@ -88,7 +88,7 @@ function getStrategy(classification: ScoreClassification | null): StrategyPlan {
 
 // ─── Public entry point ────────────────────────────────────────────────────
 
-export async function generateFollowup(leadId: string, tenantId: string, userId: string) {
+export async function generateFollowup(leadId: string, tenantId: string, userId: string | null) {
   // 1. Load lead
   const leadRows = await db
     .select()

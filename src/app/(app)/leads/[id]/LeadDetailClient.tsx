@@ -15,6 +15,7 @@ import { ActivityTimelineTab } from "@/components/lead-detail/ActivityTimelineTa
 import { VoiceFilesTab } from "@/components/lead-detail/VoiceFilesTab";
 import { CRMSyncTab } from "@/components/lead-detail/CRMSyncTab";
 import { ROIImpactTab } from "@/components/lead-detail/ROIImpactTab";
+import { WorkflowTab } from "@/components/lead-detail/WorkflowTab";
 import type { LeadScoreSummary, ConversationInsightSummary, CompanyEnrichmentSummary } from "@/components/lead-detail/types";
 import type { Lead } from "@/db/schema";
 
@@ -245,6 +246,10 @@ export function LeadDetailClient({ lead, history, eventName, creatorName, availa
 
         {tab === "roi" && (
           <ROIImpactTab eventId={lead.eventId ?? null} leadExpectedRevenue={leadExpectedRevenue} />
+        )}
+
+        {tab === "workflow" && (
+          <WorkflowTab leadId={lead.id} />
         )}
       </div>
     </div>

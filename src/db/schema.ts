@@ -675,6 +675,105 @@ export const eventRoiMetrics = pgTable(
   ]
 );
 
+// ─── Agent Orchestrator & Workflow Engine ──────────────────────────────────
+
+export const agentStatusEnum = pgEnum("agent_status", ["active", "inactive", "maintenance"]);
+
+export const agentExecutionStatusEnum = pgEnum("agent_execution_status", [
+  "queued", "running", "completed", "failed", "cancelled", "skipped",
+]);
+
+export const workflowStatusEnum = pgEnum("workflow_status", [
+  "queued", "running", "completed", "failed", "cancelled",
+]);
+
+export const agentRegistry = pgTable(
+  "agent_registry",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    agentName: varchar("agent_name", { length: 100 }).notNull().unique(),
+    agentType: varchar("agent_type", { length: 100 }).notNull(),
+    description: text("description"),
+    version: varchar("version", { length: 20 }).notNull().default("1.0.0"),
+    status: agentStatusEnum("status").notNull().default("active"),
+    supportsRetry: boolean("supports_retry").notNull().default(true),
+    maxRetries: integer("max_retries").notNull().default(3),
+    executionTimeoutSeconds: integer("execution_timeout_seconds").notNull().default(60),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  }
+);
+
+export const workflowRuns = pgTable(
+  "workflow_runs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+    leadId: uuid("lead_id").notNull().references(() => leads.id, { onDelete: "cascade" }),
+    eventId: uuid("event_id").references(() => events.id, { onDelete: "set null" }),
+    workflowName: varchar("workflow_name", { length: 100 }).notNull().default("lead_qualification"),
+    status: workflowStatusEnum("status").notNull().default("queued"),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    currentStep: integer("current_step").notNull().default(0),
+    totalSteps: integer("total_steps").notNull().default(6),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("wr_tenant_idx").on(t.tenantId),
+    index("wr_lead_idx").on(t.leadId),
+    index("wr_status_idx").on(t.tenantId, t.status),
+    index("wr_created_idx").on(t.tenantId, t.createdAt),
+  ]
+);
+
+export const agentExecutions = pgTable(
+  "agent_executions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+    leadId: uuid("lead_id").notNull().references(() => leads.id, { onDelete: "cascade" }),
+    eventId: uuid("event_id").references(() => events.id, { onDelete: "set null" }),
+    workflowId: uuid("workflow_id").references(() => workflowRuns.id, { onDelete: "cascade" }),
+    agentName: varchar("agent_name", { length: 100 }).notNull(),
+    stepOrder: integer("step_order").notNull().default(0),
+    status: agentExecutionStatusEnum("status").notNull().default("queued"),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    durationMs: integer("duration_ms"),
+    retryCount: integer("retry_count").notNull().default(0),
+    inputPayload: jsonb("input_payload"),
+    outputPayload: jsonb("output_payload"),
+    errorMessage: text("error_message"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("ae_tenant_idx").on(t.tenantId),
+    index("ae_lead_idx").on(t.leadId),
+    index("ae_workflow_idx").on(t.workflowId),
+    index("ae_agent_idx").on(t.tenantId, t.agentName),
+    index("ae_status_idx").on(t.tenantId, t.status),
+    index("ae_created_idx").on(t.tenantId, t.createdAt),
+  ]
+);
+
+export const agentPolicies = pgTable(
+  "agent_policies",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    agentName: varchar("agent_name", { length: 100 }).notNull(),
+    policyName: varchar("policy_name", { length: 150 }).notNull(),
+    policyType: varchar("policy_type", { length: 50 }).notNull(),
+    enabled: boolean("enabled").notNull().default(true),
+    configuration: jsonb("configuration"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("ap_agent_idx").on(t.agentName)]
+);
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type Tenant = typeof tenants.$inferSelect;
@@ -732,3 +831,14 @@ export type NewEventCost = typeof eventCosts.$inferInsert;
 export type EventCostCategory = "booth" | "travel" | "hotel" | "marketing" | "sponsorship" | "staff" | "collateral" | "other";
 export type EventRoiMetrics = typeof eventRoiMetrics.$inferSelect;
 export type NewEventRoiMetrics = typeof eventRoiMetrics.$inferInsert;
+export type AgentRegistryRow = typeof agentRegistry.$inferSelect;
+export type NewAgentRegistryRow = typeof agentRegistry.$inferInsert;
+export type AgentStatus = "active" | "inactive" | "maintenance";
+export type WorkflowRun = typeof workflowRuns.$inferSelect;
+export type NewWorkflowRun = typeof workflowRuns.$inferInsert;
+export type WorkflowStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
+export type AgentExecution = typeof agentExecutions.$inferSelect;
+export type NewAgentExecution = typeof agentExecutions.$inferInsert;
+export type AgentExecutionStatus = "queued" | "running" | "completed" | "failed" | "cancelled" | "skipped";
+export type AgentPolicy = typeof agentPolicies.$inferSelect;
+export type NewAgentPolicy = typeof agentPolicies.$inferInsert;

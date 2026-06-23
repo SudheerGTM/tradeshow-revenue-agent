@@ -8,7 +8,7 @@ import {
   Brain, AlertTriangle, Zap, Package, Sparkles, Building2, TrendingUp,
   CalendarDays, BarChart2, Flame, Thermometer, Snowflake, Inbox,
   RefreshCw, Briefcase, ClipboardList, Trophy, ThumbsDown, Kanban,
-  DollarSign, BarChart3,
+  DollarSign, BarChart3, Workflow, Bot, Gauge,
 } from "lucide-react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/Badge";
@@ -41,6 +41,7 @@ export default async function DashboardPage() {
   let hotLeadsWithoutOpp = 0;
   let roiStats = { totalEventCost: 0, totalPipeline: 0, expectedRevenue: 0, wonRevenue: 0, roiPercentage: null as number | null };
   let bestEvent: { name: string; roiPercentage: number } | null = null;
+  let orchestratorStats = { workflowsRunning: 0, workflowsFailed: 0, agentSuccessRate: null as number | null, avgProcessingTimeMs: null as number | null };
 
   if (session?.user?.tenantId) {
     const tenantId = session.user.tenantId;
@@ -323,6 +324,27 @@ export default async function DashboardPage() {
     roiStats.roiPercentage = roiStats.totalEventCost > 0
       ? Math.round(((roiStats.wonRevenue - roiStats.totalEventCost) / roiStats.totalEventCost) * 10000) / 100
       : null;
+
+    // Orchestrator stats
+    const [runningRow] = await db.select({ count: sql<number>`count(*)::int` }).from(schema.workflowRuns)
+      .where(and(eq(schema.workflowRuns.tenantId, tenantId), eq(schema.workflowRuns.status, "running")));
+    orchestratorStats.workflowsRunning = runningRow?.count ?? 0;
+
+    const [failedRow] = await db.select({ count: sql<number>`count(*)::int` }).from(schema.workflowRuns)
+      .where(and(eq(schema.workflowRuns.tenantId, tenantId), eq(schema.workflowRuns.status, "failed")));
+    orchestratorStats.workflowsFailed = failedRow?.count ?? 0;
+
+    const [agentStatsRow] = await db
+      .select({
+        completed: sql<number>`count(*) filter (where status = 'completed')::int`,
+        failed: sql<number>`count(*) filter (where status = 'failed')::int`,
+        avgDuration: sql<string>`coalesce(avg(duration_ms) filter (where status = 'completed'), 0)`,
+      })
+      .from(schema.agentExecutions)
+      .where(eq(schema.agentExecutions.tenantId, tenantId));
+    const finishedRuns = (agentStatsRow?.completed ?? 0) + (agentStatsRow?.failed ?? 0);
+    orchestratorStats.agentSuccessRate = finishedRuns > 0 ? Math.round(((agentStatsRow?.completed ?? 0) / finishedRuns) * 100) : null;
+    orchestratorStats.avgProcessingTimeMs = agentStatsRow ? Math.round(parseFloat(agentStatsRow.avgDuration)) : null;
   }
 
   const tenantName = tenant?.name ?? (session?.user?.role === "platform_admin" ? "Platform Overview" : slug);
@@ -513,6 +535,17 @@ export default async function DashboardPage() {
             <p className="text-sm text-[#0F172A]"><span className="font-semibold">Best Performing Event:</span> {bestEvent.name} ({bestEvent.roiPercentage}% ROI)</p>
           </div>
         )}
+      </div>
+
+      {/* Agent Orchestrator row */}
+      <div>
+        <SectionHeader title="Agent Orchestrator" icon={Workflow} href="/workflows" />
+        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-3">
+          <KpiCard icon={Workflow} label="Workflows Running" value={String(orchestratorStats.workflowsRunning)} color="turquoise" href="/workflows" />
+          <KpiCard icon={ThumbsDown} label="Workflows Failed" value={String(orchestratorStats.workflowsFailed)} color="danger" href="/workflows" />
+          <KpiCard icon={Bot} label="Agent Success Rate" value={orchestratorStats.agentSuccessRate != null ? `${orchestratorStats.agentSuccessRate}%` : "n/a"} color="success" href="/agents" />
+          <KpiCard icon={Gauge} label="Avg Processing Time" value={orchestratorStats.avgProcessingTimeMs != null ? `${orchestratorStats.avgProcessingTimeMs}ms` : "n/a"} color="blue" href="/agents" />
+        </div>
       </div>
 
       {/* Pipeline & Opportunities row */}

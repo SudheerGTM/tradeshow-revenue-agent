@@ -1,15 +1,16 @@
 "use client";
 
 import {
-  LayoutGrid, Brain, Building2, Star, Mail, Briefcase, Activity, Mic, RefreshCw, TrendingUp,
+  LayoutGrid, Brain, Building2, Star, Mail, Briefcase, Activity, Mic, RefreshCw, TrendingUp, Workflow,
 } from "lucide-react";
 
 export type TabKey =
   | "overview" | "conversation" | "company" | "scoring" | "followup"
-  | "opportunity" | "activity" | "voice" | "crm" | "roi";
+  | "opportunity" | "activity" | "voice" | "crm" | "roi" | "workflow";
 
 export const TABS: { key: TabKey; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { key: "overview",     label: "Overview",                  icon: LayoutGrid },
+  { key: "workflow",     label: "Workflow",                   icon: Workflow },
   { key: "conversation", label: "Conversation Intelligence",  icon: Brain },
   { key: "company",      label: "Company Intelligence",       icon: Building2 },
   { key: "scoring",      label: "Lead Scoring",                icon: Star },
