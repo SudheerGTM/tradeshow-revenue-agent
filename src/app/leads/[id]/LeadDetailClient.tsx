@@ -1,23 +1,22 @@
 "use client";
 
-import { useState } from "react";
-import { ArrowLeft, Clock, User, Building2, Mail, Phone, Globe, Tag } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
-import { Badge } from "@/components/ui/Badge";
-import { Select, Textarea, Input } from "@/components/ui/Input";
-import { Button } from "@/components/ui/Button";
-import { VoiceRecorder } from "@/components/VoiceRecorder";
-import { ConversationIntelligence } from "@/components/ConversationIntelligence";
-import { EnrichmentPanel } from "@/components/EnrichmentPanel";
-import { LeadScorePanel } from "@/components/LeadScorePanel";
-import { FollowUpPanel } from "@/components/FollowUpPanel";
-import { CRMSyncPanel } from "@/components/CRMSyncPanel";
-import { OpportunityPanel } from "@/components/OpportunityPanel";
+import { LeadHeader } from "@/components/lead-detail/LeadHeader";
+import { TabNav, type TabKey } from "@/components/lead-detail/TabNav";
+import { OverviewTab } from "@/components/lead-detail/OverviewTab";
+import { ConversationIntelTab } from "@/components/lead-detail/ConversationIntelTab";
+import { CompanyIntelTab } from "@/components/lead-detail/CompanyIntelTab";
+import { ScoringTab } from "@/components/lead-detail/ScoringTab";
+import { FollowUpTab } from "@/components/lead-detail/FollowUpTab";
+import { OpportunityTab } from "@/components/lead-detail/OpportunityTab";
+import { ActivityTimelineTab } from "@/components/lead-detail/ActivityTimelineTab";
+import { VoiceFilesTab } from "@/components/lead-detail/VoiceFilesTab";
+import { CRMSyncTab } from "@/components/lead-detail/CRMSyncTab";
+import { ROIImpactTab } from "@/components/lead-detail/ROIImpactTab";
+import type { LeadScoreSummary, ConversationInsightSummary, CompanyEnrichmentSummary } from "@/components/lead-detail/types";
 import type { Lead } from "@/db/schema";
-
-const STATUS_COLORS: Record<string, "blue" | "yellow" | "green" | "red"> = {
-  new: "blue", contacted: "yellow", qualified: "green", disqualified: "red",
-};
 
 const SOURCE_LABELS: Record<string, string> = {
   manual: "Manual Entry", qr_form: "QR Form", business_card: "Business Card",
@@ -36,15 +35,78 @@ interface Props {
   userRole: string;
 }
 
+interface ContactForm {
+  firstName: string; lastName: string; jobTitle: string; companyName: string;
+  email: string; phone: string; country: string;
+}
+
 export function LeadDetailClient({ lead, history, eventName, creatorName, availableTranscriptId, userRole }: Props) {
-  const [status, setStatus] = useState(lead.status);
+  const [tab, setTab] = useState<TabKey>("overview");
+
+  // Shared workspace-level data — fetched once here so the header and the
+  // Overview/Scoring/ROI tabs don't each duplicate it. Individual tabs
+  // (LeadScorePanel, ConversationIntelligence, etc.) still self-manage their
+  // own data for actions like Generate/Regenerate, unchanged from before.
+  const [score, setScore] = useState<LeadScoreSummary | null>(null);
+  const [insight, setInsight] = useState<ConversationInsightSummary | null>(null);
+  const [company, setCompany] = useState<CompanyEnrichmentSummary | null>(null);
+  const [contactLinkedin, setContactLinkedin] = useState<string | null>(null);
+
+  const loadWorkspaceData = useCallback(async () => {
+    const [scoreRes, insightRes, enrichRes] = await Promise.all([
+      fetch(`/api/lead-scores?lead_id=${lead.id}`),
+      fetch(`/api/conversation-insights?lead_id=${lead.id}`),
+      fetch(`/api/enrichment?lead_id=${lead.id}`),
+    ]);
+    if (scoreRes.ok) {
+      const rows = await scoreRes.json();
+      setScore(rows[0] ?? null);
+    }
+    if (insightRes.ok) {
+      const rows = await insightRes.json();
+      setInsight(rows[0] ?? null);
+    }
+    if (enrichRes.ok) {
+      const data = await enrichRes.json();
+      setCompany(data.company ?? null);
+      setContactLinkedin(data.contact?.linkedinUrl ?? null);
+    }
+  }, [lead.id]);
+
+  useEffect(() => { loadWorkspaceData(); }, [loadWorkspaceData]);
+
+  // Notes
   const [notes, setNotes] = useState(lead.notes ?? "");
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const [savingNotes, setSavingNotes] = useState(false);
+  const [savedNotes, setSavedNotes] = useState(false);
   const [localHistory, setLocalHistory] = useState(history);
 
+  async function refreshHistory() {
+    const detail = await fetch(`/api/leads/${lead.id}`);
+    if (detail.ok) {
+      const data = await detail.json();
+      setLocalHistory(data.history);
+    }
+  }
+
+  async function handleSaveNotes() {
+    setSavingNotes(true);
+    const res = await fetch(`/api/leads/${lead.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ notes }),
+    });
+    setSavingNotes(false);
+    if (res.ok) {
+      setSavedNotes(true);
+      setTimeout(() => setSavedNotes(false), 2000);
+      await refreshHistory();
+    }
+  }
+
+  // Contact info edit
   const [editingContact, setEditingContact] = useState(false);
-  const [contact, setContact] = useState({
+  const [contact, setContact] = useState<ContactForm>({
     firstName: lead.firstName,
     lastName: lead.lastName ?? "",
     jobTitle: lead.jobTitle ?? "",
@@ -55,29 +117,6 @@ export function LeadDetailClient({ lead, history, eventName, creatorName, availa
   });
   const [contactError, setContactError] = useState("");
   const [savingContact, setSavingContact] = useState(false);
-
-  async function refreshHistory() {
-    const detail = await fetch(`/api/leads/${lead.id}`);
-    if (detail.ok) {
-      const data = await detail.json();
-      setLocalHistory(data.history);
-    }
-  }
-
-  async function handleSave() {
-    setSaving(true);
-    const res = await fetch(`/api/leads/${lead.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status, notes }),
-    });
-    setSaving(false);
-    if (res.ok) {
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
-      await refreshHistory();
-    }
-  }
 
   async function handleSaveContact() {
     if (!contact.firstName.trim()) { setContactError("First name is required"); return; }
@@ -114,184 +153,99 @@ export function LeadDetailClient({ lead, history, eventName, creatorName, availa
     setEditingContact(false);
   }
 
+  const leadExpectedRevenue = score?.expectedRevenue != null ? parseFloat(score.expectedRevenue) : null;
+
   return (
-    <div className="space-y-6 max-w-4xl">
-      {/* Back + header */}
-      <div className="flex items-start gap-4">
-        <Link href="/leads" className="text-[#94A3B8] hover:text-[#475569] mt-0.5 transition">
-          <ArrowLeft className="w-5 h-5" />
-        </Link>
-        <div className="flex-1">
-          <h1 className="text-xl font-bold text-[#0F172A]">
-            {contact.firstName} {contact.lastName}
-          </h1>
-          <p className="text-sm text-[#475569] mt-0.5">
-            {contact.jobTitle}{contact.jobTitle && contact.companyName ? " · " : ""}{contact.companyName}
-          </p>
-        </div>
-        <Badge variant={STATUS_COLORS[status] ?? "gray"} className="text-sm px-3 py-1">
-          {status}
-        </Badge>
-      </div>
+    <div className="space-y-5 max-w-7xl">
+      {/* Back link */}
+      <Link href="/leads" className="inline-flex items-center gap-1.5 text-sm text-[#94A3B8] hover:text-[#475569] transition">
+        <ArrowLeft className="w-4 h-4" /> Back to Leads
+      </Link>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        {/* Left: details */}
-        <div className="lg:col-span-2 space-y-4">
-          {/* Contact info */}
-          <div className="bg-white border border-[#E2E8F0] rounded-xl shadow-sm">
-            <div className="px-5 py-3.5 flex items-center justify-between">
-              <p className="text-xs font-semibold text-[#475569] uppercase tracking-wider">Contact Information</p>
-              {!editingContact && (
-                <button
-                  onClick={() => setEditingContact(true)}
-                  className="text-xs text-[#00B8D9] hover:text-[#009ab8] font-medium"
-                >
-                  Edit
-                </button>
-              )}
-            </div>
+      <LeadHeader
+        firstName={contact.firstName}
+        lastName={contact.lastName}
+        jobTitle={contact.jobTitle}
+        companyName={contact.companyName}
+        country={contact.country}
+        score={score}
+        onGenerateFollowUp={() => setTab("followup")}
+        onCreateOpportunity={() => setTab("opportunity")}
+        onPrepareCrmSync={() => setTab("crm")}
+      />
 
-            {editingContact ? (
-              <div className="px-5 pb-5 space-y-3">
-                {contactError && (
-                  <p className="text-xs text-[#DC2626] bg-[#fee2e2] border border-[#DC2626]/20 rounded-xl px-3 py-2">{contactError}</p>
-                )}
-                <div className="grid grid-cols-2 gap-3">
-                  <Input label="First Name *" value={contact.firstName} onChange={(e) => setContact(c => ({ ...c, firstName: e.target.value }))} />
-                  <Input label="Last Name" value={contact.lastName} onChange={(e) => setContact(c => ({ ...c, lastName: e.target.value }))} />
-                </div>
-                <Input label="Job Title" value={contact.jobTitle} onChange={(e) => setContact(c => ({ ...c, jobTitle: e.target.value }))} />
-                <Input label="Company *" value={contact.companyName} onChange={(e) => setContact(c => ({ ...c, companyName: e.target.value }))} />
-                <div className="grid grid-cols-2 gap-3">
-                  <Input label="Email" type="email" value={contact.email} onChange={(e) => setContact(c => ({ ...c, email: e.target.value }))} />
-                  <Input label="Phone" value={contact.phone} onChange={(e) => setContact(c => ({ ...c, phone: e.target.value }))} />
-                </div>
-                <Input label="Country" value={contact.country} onChange={(e) => setContact(c => ({ ...c, country: e.target.value }))} />
-                <div className="flex gap-2 pt-1">
-                  <Button onClick={handleSaveContact} loading={savingContact} className="flex-1">Save</Button>
-                  <Button onClick={cancelEditContact} variant="secondary" className="flex-1">Cancel</Button>
-                </div>
-              </div>
-            ) : (
-              <div className="divide-y divide-[#F1F5F9]">
-                {[
-                  { icon: Building2, label: "Company",     value: contact.companyName },
-                  { icon: Mail,      label: "Email",       value: contact.email },
-                  { icon: Phone,     label: "Phone",       value: contact.phone },
-                  { icon: Globe,     label: "Country",     value: contact.country },
-                  { icon: Tag,       label: "Source",      value: SOURCE_LABELS[lead.source] ?? lead.source },
-                  { icon: User,      label: "Captured by", value: creatorName ?? "QR Form / Public" },
-                  { icon: Clock,     label: "Captured",    value: new Date(lead.createdAt).toLocaleString() },
-                ].map(({ icon: Icon, label, value }) => value ? (
-                  <div key={label} className="px-5 py-3.5 flex items-center gap-3">
-                    <Icon className="w-4 h-4 text-[#94A3B8] shrink-0" />
-                    <span className="text-xs text-[#94A3B8] w-24 shrink-0">{label}</span>
-                    <span className="text-sm text-[#0F172A]">{value}</span>
-                  </div>
-                ) : null)}
-                {eventName && (
-                  <div className="px-5 py-3.5 flex items-center gap-3">
-                    <Clock className="w-4 h-4 text-[#94A3B8] shrink-0" />
-                    <span className="text-xs text-[#94A3B8] w-24 shrink-0">Event</span>
-                    <span className="text-sm text-[#0F172A]">{eventName}</span>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+      <TabNav active={tab} onChange={setTab} />
 
-          {/* Notes */}
-          <div className="bg-white border border-[#E2E8F0] rounded-xl p-5 space-y-3 shadow-sm">
-            <p className="text-xs font-semibold text-[#475569] uppercase tracking-wider">Notes</p>
-            <Textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Add notes about this lead…"
-              rows={4}
-            />
-          </div>
+      <div>
+        {tab === "overview" && (
+          <OverviewTab
+            score={score}
+            insight={insight}
+            company={company}
+            contactLinkedin={contactLinkedin}
+            eventName={eventName}
+            creatorName={creatorName}
+            source={lead.source}
+            sourceLabel={SOURCE_LABELS[lead.source] ?? lead.source}
+            consentGiven={lead.consentGiven}
+            consentTimestamp={lead.consentTimestamp ? new Date(lead.consentTimestamp).toISOString() : null}
+            createdAt={new Date(lead.createdAt).toISOString()}
+            notes={notes}
+            onNotesChange={setNotes}
+            onSaveNotes={handleSaveNotes}
+            savingNotes={savingNotes}
+            savedNotes={savedNotes}
+            editingContact={editingContact}
+            contact={contact}
+            onContactChange={setContact}
+            onStartEditContact={() => setEditingContact(true)}
+            onSaveContact={handleSaveContact}
+            onCancelEditContact={cancelEditContact}
+            savingContact={savingContact}
+            contactError={contactError}
+          />
+        )}
 
-          {/* Lead Score */}
-          <LeadScorePanel leadId={lead.id} />
-
-          {/* Opportunity */}
-          <OpportunityPanel leadId={lead.id} userRole={userRole} />
-
-          {/* Follow-Up Intelligence */}
-          <FollowUpPanel leadId={lead.id} userRole={userRole} />
-
-          {/* CRM Sync */}
-          <CRMSyncPanel leadId={lead.id} userRole={userRole} />
-
-          {/* Voice Notes */}
-          <VoiceRecorder leadId={lead.id} />
-
-          {/* Apollo Enrichment */}
-          <EnrichmentPanel leadId={lead.id} userRole={userRole} />
-
-          {/* Conversation Intelligence */}
-          <ConversationIntelligence
+        {tab === "conversation" && (
+          <ConversationIntelTab
             leadId={lead.id}
             leadNotes={lead.notes}
-            availableTranscriptId={availableTranscriptId}
+            availableTranscriptId={availableTranscriptId ?? null}
+            insight={insight}
           />
-        </div>
+        )}
 
-        {/* Right: status + audit */}
-        <div className="space-y-4">
-          {/* Status update */}
-          <div className="bg-white border border-[#E2E8F0] rounded-xl p-5 space-y-4 shadow-sm">
-            <p className="text-xs font-semibold text-[#475569] uppercase tracking-wider">Update Status</p>
-            <Select value={status} onChange={(e) => setStatus(e.target.value as typeof lead.status)}>
-              {["new", "contacted", "qualified", "disqualified"].map(s => (
-                <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
-              ))}
-            </Select>
-            <Button onClick={handleSave} loading={saving} className="w-full">
-              {saved ? "✓ Saved" : "Save Changes"}
-            </Button>
-          </div>
+        {tab === "company" && (
+          <CompanyIntelTab leadId={lead.id} userRole={userRole} company={company} score={score} />
+        )}
 
-          {/* Consent */}
-          <div className={`rounded-xl border p-4 ${lead.consentGiven
-            ? "bg-[#dcfce7] border-[#16A34A]/30"
-            : "bg-[#fee2e2] border-[#DC2626]/30"
-          }`}>
-            <p className={`text-xs font-semibold uppercase tracking-wider mb-1 ${lead.consentGiven ? "text-[#16A34A]" : "text-[#DC2626]"}`}>
-              {lead.consentGiven ? "✓ Consent Given" : "✗ No Consent"}
-            </p>
-            {lead.consentTimestamp && (
-              <p className="text-[11px] text-[#64748B]">
-                {new Date(lead.consentTimestamp).toLocaleString()}
-              </p>
-            )}
-          </div>
+        {tab === "scoring" && (
+          <ScoringTab leadId={lead.id} score={score} />
+        )}
 
-          {/* Audit history */}
-          <div className="bg-white border border-[#E2E8F0] rounded-xl p-5 space-y-3 shadow-sm">
-            <p className="text-xs font-semibold text-[#475569] uppercase tracking-wider">Audit History</p>
-            {localHistory.length === 0 ? (
-              <p className="text-xs text-[#94A3B8]">No history yet.</p>
-            ) : (
-              <div className="space-y-2.5">
-                {localHistory.map((entry) => (
-                  <div key={entry.id} className="flex gap-2.5">
-                    <div className="w-1.5 h-1.5 rounded-full bg-[#00B8D9] mt-1.5 shrink-0" />
-                    <div>
-                      <p className="text-xs text-[#0F172A]">{entry.action.replace(".", " ").replace("_", " ")}</p>
-                      {entry.metadata && typeof entry.metadata === "object" && "to" in entry.metadata && (
-                        <p className="text-[11px] text-[#94A3B8]">
-                          {String((entry.metadata as { from?: string }).from ?? "")} → {String((entry.metadata as { to?: string }).to ?? "")}
-                        </p>
-                      )}
-                      <p className="text-[11px] text-[#CBD5E1]">{new Date(entry.createdAt).toLocaleString()}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
+        {tab === "followup" && (
+          <FollowUpTab leadId={lead.id} userRole={userRole} insight={insight} />
+        )}
+
+        {tab === "opportunity" && (
+          <OpportunityTab leadId={lead.id} userRole={userRole} />
+        )}
+
+        {tab === "activity" && (
+          <ActivityTimelineTab history={localHistory} />
+        )}
+
+        {tab === "voice" && (
+          <VoiceFilesTab leadId={lead.id} />
+        )}
+
+        {tab === "crm" && (
+          <CRMSyncTab leadId={lead.id} userRole={userRole} />
+        )}
+
+        {tab === "roi" && (
+          <ROIImpactTab eventId={lead.eventId ?? null} leadExpectedRevenue={leadExpectedRevenue} />
+        )}
       </div>
     </div>
   );
