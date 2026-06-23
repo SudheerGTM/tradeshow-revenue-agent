@@ -1,12 +1,17 @@
 "use client";
 
-import { useState } from "react";
-import { Plus, Users, RefreshCw } from "lucide-react";
-import { Badge, roleBadge, statusBadge } from "@/components/ui/Badge";
+import { useState, Fragment } from "react";
+import { UserPlus, Users, RefreshCw, ChevronDown, ChevronUp, Target, Star, Briefcase, TrendingUp, UserCheck } from "lucide-react";
+import { Badge, statusBadge } from "@/components/ui/Badge";
+import { RoleBadge } from "@/components/admin/RoleBadge";
+import { KpiGrid } from "@/components/admin/KpiGrid";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Modal } from "@/components/ui/Modal";
 import { PageHeader } from "@/components/ui/PageHeader";
-import type { Tenant, UserRole } from "@/db/schema";
+import { Button } from "@/components/ui/Button";
+import { useToast } from "@/components/ui/Toast";
+import { mockLastActive } from "@/lib/mockActivity";
+import type { Tenant, UserRole, Event } from "@/db/schema";
 
 interface UserRow {
   id: string; name: string; email: string;
@@ -14,17 +19,32 @@ interface UserRow {
   tenantId: string | null; createdAt: Date;
 }
 
+interface UserPerf {
+  leadsCaptured: number; qualifiedLeads: number; opportunitiesCreated: number; pipelineGenerated: number;
+}
+
+interface TenantKpis {
+  totalUsers: number; activeUsers: number; leadsCaptured: number; qualifiedLeads: number; opportunities: number; pipelineValue: number;
+}
+
 interface Props {
   initial: UserRow[];
   tenants: Tenant[];
+  events: Event[];
+  userPerf: Record<string, UserPerf>;
+  tenantKpis: TenantKpis;
   actorRole: string;
   actorTenantId?: string;
 }
 
-export function UsersClient({ initial, tenants, actorRole, actorTenantId }: Props) {
+function fmtGBP(n: number) { return `£${n.toLocaleString("en-GB", { maximumFractionDigits: 0 })}`; }
+
+export function UsersClient({ initial, tenants, events, userPerf, tenantKpis, actorRole, actorTenantId }: Props) {
+  const toast = useToast();
   const [users, setUsers] = useState<UserRow[]>(initial);
-  const [showCreate, setShowCreate] = useState(false);
+  const [showInvite, setShowInvite] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const canCreate = actorRole === "platform_admin" || actorRole === "tenant_admin";
 
@@ -39,14 +59,27 @@ export function UsersClient({ initial, tenants, actorRole, actorTenantId }: Prop
     if (res.ok) {
       const updated: UserRow = await res.json();
       setUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
+      toast.success(`${updated.name} ${newStatus === "active" ? "activated" : "deactivated"}`);
+    } else {
+      toast.error("Failed to update user status");
     }
     setTogglingId(null);
   }
 
   function onCreated(user: UserRow) {
     setUsers((prev) => [user, ...prev]);
-    setShowCreate(false);
+    setShowInvite(false);
+    toast.success(`${user.name} added to the team`);
   }
+
+  const kpis = [
+    { icon: Users, label: "Total Users", value: String(tenantKpis.totalUsers), color: "#0F4C81", bg: "#dbeafe" },
+    { icon: UserCheck, label: "Active Users", value: String(tenantKpis.activeUsers), color: "#16A34A", bg: "#dcfce7" },
+    { icon: Target, label: "Leads Captured", value: String(tenantKpis.leadsCaptured), color: "#00B8D9", bg: "#e6f8fc" },
+    { icon: Star, label: "Qualified Leads", value: String(tenantKpis.qualifiedLeads), color: "#d97706", bg: "#fef3c7" },
+    { icon: Briefcase, label: "Opportunities", value: String(tenantKpis.opportunities), color: "#0F4C81", bg: "#dbeafe" },
+    { icon: TrendingUp, label: "Pipeline Value", value: fmtGBP(tenantKpis.pipelineValue), color: "#16A34A", bg: "#dcfce7" },
+  ];
 
   return (
     <div className="space-y-6">
@@ -55,82 +88,151 @@ export function UsersClient({ initial, tenants, actorRole, actorTenantId }: Prop
         description="Manage team members across your tenant"
         action={
           canCreate ? (
-            <button
-              onClick={() => setShowCreate(true)}
-              className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium px-3.5 py-2 rounded-lg transition"
-            >
-              <Plus className="w-4 h-4" /> New User
-            </button>
+            <Button onClick={() => setShowInvite(true)}>
+              <UserPlus className="w-4 h-4" /> Invite User
+            </Button>
           ) : null
         }
       />
 
+      {/* Team Performance */}
+      <div>
+        <p className="text-xs font-semibold text-[#475569] uppercase tracking-wider mb-3">Team Performance</p>
+        <KpiGrid items={kpis} />
+      </div>
+
       {users.length === 0 ? (
-        <div className="bg-gray-900 border border-gray-800 rounded-xl">
-          <EmptyState
-            icon={Users}
-            title="No users yet"
-            description="Create the first user for this tenant."
-          />
+        <div className="bg-white border border-[#E2E8F0] rounded-2xl shadow-sm">
+          <EmptyState icon={Users} title="No users yet" description="Invite the first member of this tenant." />
         </div>
       ) : (
-        <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="bg-white border border-[#E2E8F0] rounded-2xl shadow-sm overflow-hidden">
+          {/* Mobile: card list */}
+          <div className="md:hidden divide-y divide-[#F1F5F9]">
+            {users.map((u) => {
+              const perf = userPerf[u.id] ?? { leadsCaptured: 0, qualifiedLeads: 0, opportunitiesCreated: 0, pipelineGenerated: 0 };
+              return (
+                <div key={u.id} className="p-4 space-y-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-medium text-[#0F172A] truncate">{u.name}</p>
+                      <p className="text-xs text-[#94A3B8] truncate">{u.email}</p>
+                    </div>
+                    <Badge variant={statusBadge(u.status)} className="shrink-0">{u.status}</Badge>
+                  </div>
+                  <RoleBadge role={u.role} />
+                  <div className="grid grid-cols-2 gap-2 text-xs text-[#475569]">
+                    <span>Leads: <span className="font-semibold text-[#0F172A]">{perf.leadsCaptured}</span></span>
+                    <span>Opportunities: <span className="font-semibold text-[#0F172A]">{perf.opportunitiesCreated}</span></span>
+                    <span>Last Active: {mockLastActive(u.id)}</span>
+                    <span>Pipeline: <span className="font-semibold text-[#16A34A]">{fmtGBP(perf.pipelineGenerated)}</span></span>
+                  </div>
+                  {canCreate && (
+                    <button
+                      onClick={() => handleToggle(u)}
+                      disabled={togglingId === u.id}
+                      className="flex items-center gap-1.5 text-xs text-[#00B8D9] font-medium disabled:opacity-40 min-h-[36px]"
+                    >
+                      {togglingId === u.id && <RefreshCw className="w-3 h-3 animate-spin" />}
+                      {u.status === "active" ? "Deactivate" : "Activate"}
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Tablet/Desktop: table */}
+          <table className="hidden md:table w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-800 text-left text-xs text-gray-500 uppercase tracking-wider">
+              <tr className="border-b border-[#F1F5F9] text-left text-xs text-[#94A3B8] uppercase tracking-wider">
                 <th className="px-5 py-3 font-medium">Name</th>
-                <th className="px-5 py-3 font-medium">Email</th>
                 <th className="px-5 py-3 font-medium">Role</th>
                 <th className="px-5 py-3 font-medium">Status</th>
-                <th className="px-5 py-3 font-medium">Joined</th>
-                {canCreate && <th className="px-5 py-3 font-medium"></th>}
+                <th className="px-5 py-3 font-medium hidden lg:table-cell">Last Active</th>
+                <th className="px-5 py-3 font-medium">Leads</th>
+                <th className="px-5 py-3 font-medium hidden lg:table-cell">Opportunities</th>
+                <th className="px-5 py-3 font-medium"></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-800">
-              {users.map((u) => (
-                <tr key={u.id} className="hover:bg-gray-800/40 transition">
-                  <td className="px-5 py-3.5 font-medium text-white">{u.name}</td>
-                  <td className="px-5 py-3.5 text-gray-400">{u.email}</td>
-                  <td className="px-5 py-3.5">
-                    <Badge variant={roleBadge(u.role)}>
-                      {u.role.replace("_", " ")}
-                    </Badge>
-                  </td>
-                  <td className="px-5 py-3.5">
-                    <Badge variant={statusBadge(u.status)}>{u.status}</Badge>
-                  </td>
-                  <td className="px-5 py-3.5 text-gray-500 text-xs">
-                    {new Date(u.createdAt).toLocaleDateString()}
-                  </td>
-                  {canCreate && (
-                    <td className="px-5 py-3.5 text-right">
-                      <button
-                        onClick={() => handleToggle(u)}
-                        disabled={togglingId === u.id}
-                        className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-white transition disabled:opacity-40"
-                      >
-                        {togglingId === u.id && <RefreshCw className="w-3 h-3 animate-spin" />}
-                        {u.status === "active" ? "Deactivate" : "Activate"}
-                      </button>
-                    </td>
-                  )}
-                </tr>
-              ))}
+            <tbody className="divide-y divide-[#F1F5F9]">
+              {users.map((u) => {
+                const perf = userPerf[u.id] ?? { leadsCaptured: 0, qualifiedLeads: 0, opportunitiesCreated: 0, pipelineGenerated: 0 };
+                const expanded = expandedId === u.id;
+                return (
+                  <Fragment key={u.id}>
+                    <tr className="hover:bg-[#F8FAFC] transition">
+                      <td className="px-5 py-3.5">
+                        <p className="font-medium text-[#0F172A]">{u.name}</p>
+                        <p className="text-xs text-[#94A3B8]">{u.email}</p>
+                      </td>
+                      <td className="px-5 py-3.5"><RoleBadge role={u.role} /></td>
+                      <td className="px-5 py-3.5"><Badge variant={statusBadge(u.status)}>{u.status}</Badge></td>
+                      <td className="px-5 py-3.5 text-[#475569] text-xs hidden lg:table-cell">{mockLastActive(u.id)}</td>
+                      <td className="px-5 py-3.5 text-[#0F172A] font-medium">{perf.leadsCaptured}</td>
+                      <td className="px-5 py-3.5 text-[#0F172A] font-medium hidden lg:table-cell">{perf.opportunitiesCreated}</td>
+                      <td className="px-5 py-3.5 text-right">
+                        <div className="flex items-center justify-end gap-3">
+                          <button
+                            onClick={() => setExpandedId(expanded ? null : u.id)}
+                            className="text-[#94A3B8] hover:text-[#0F172A] transition"
+                            aria-label="Toggle performance details"
+                          >
+                            {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                          </button>
+                          {canCreate && (
+                            <button
+                              onClick={() => handleToggle(u)}
+                              disabled={togglingId === u.id}
+                              className="flex items-center gap-1.5 text-xs text-[#475569] hover:text-[#0F172A] transition disabled:opacity-40"
+                            >
+                              {togglingId === u.id && <RefreshCw className="w-3 h-3 animate-spin" />}
+                              {u.status === "active" ? "Deactivate" : "Activate"}
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                    {expanded && (
+                      <tr className="bg-[#F8FAFC]">
+                        <td colSpan={7} className="px-5 py-4">
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                            <PerfStat label="Leads Captured" value={String(perf.leadsCaptured)} />
+                            <PerfStat label="Qualified Leads" value={String(perf.qualifiedLeads)} />
+                            <PerfStat label="Opportunities Created" value={String(perf.opportunitiesCreated)} />
+                            <PerfStat label="Pipeline Generated" value={fmtGBP(perf.pipelineGenerated)} highlight />
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
             </tbody>
           </table>
         </div>
       )}
 
       {canCreate && (
-        <Modal open={showCreate} onClose={() => setShowCreate(false)} title="Create User">
-          <CreateUserForm
+        <Modal open={showInvite} onClose={() => setShowInvite(false)} title="Invite User">
+          <InviteUserForm
             onCreated={onCreated}
             tenants={tenants}
+            events={events}
             actorRole={actorRole}
             actorTenantId={actorTenantId}
           />
         </Modal>
       )}
+    </div>
+  );
+}
+
+function PerfStat({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
+  return (
+    <div>
+      <p className={`text-lg font-bold ${highlight ? "text-[#16A34A]" : "text-[#0F172A]"}`}>{value}</p>
+      <p className="text-[11px] text-[#94A3B8] mt-0.5">{label}</p>
     </div>
   );
 }
@@ -141,18 +243,21 @@ const ASSIGNABLE_ROLES: Record<string, UserRole[]> = {
   manager:        [],
 };
 
-function CreateUserForm({
-  onCreated, tenants, actorRole, actorTenantId,
+function InviteUserForm({
+  onCreated, tenants, events, actorRole, actorTenantId,
 }: {
   onCreated: (u: UserRow) => void;
   tenants: Tenant[];
+  events: Event[];
   actorRole: string;
   actorTenantId?: string;
 }) {
+  const toast = useToast();
   const [form, setForm] = useState({
-    name: "", email: "", password: "",
+    name: "", email: "",
     role: "booth_user" as UserRole,
     tenantId: actorTenantId ?? "",
+    eventAccess: "",
   });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -163,10 +268,14 @@ function CreateUserForm({
     e.preventDefault();
     setError("");
     setLoading(true);
+    // Temporary credential generated client-side — no email-sending workflow
+    // exists yet, so the account is created immediately and the temporary
+    // password must be shared with the invitee manually for now.
+    const tempPassword = `Welcome${Math.random().toString(36).slice(2, 8)}!`;
     const res = await fetch("/api/users", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form),
+      body: JSON.stringify({ name: form.name, email: form.email, password: tempPassword, role: form.role, tenantId: form.tenantId }),
     });
     setLoading(false);
     if (!res.ok) {
@@ -174,7 +283,9 @@ function CreateUserForm({
       setError(data.error ?? "Something went wrong");
       return;
     }
-    onCreated(await res.json());
+    const user = await res.json();
+    toast.info(`Temporary password: ${tempPassword} — share this with ${form.name} directly until email invites are available.`);
+    onCreated(user);
   }
 
   return (
@@ -183,29 +294,42 @@ function CreateUserForm({
         onChange={(v) => setForm((p) => ({ ...p, name: v }))} placeholder="Jane Doe" />
       <Field label="Email" type="email" value={form.email}
         onChange={(v) => setForm((p) => ({ ...p, email: v }))} placeholder="jane@company.com" />
-      <Field label="Temporary password" type="password" value={form.password}
-        onChange={(v) => setForm((p) => ({ ...p, password: v }))} placeholder="••••••••" />
 
       <div>
-        <label className="block text-xs font-medium text-gray-400 mb-1.5">Role</label>
+        <label className="block text-xs font-medium text-[#475569] mb-1.5">Role</label>
         <select
           value={form.role}
           onChange={(e) => setForm((p) => ({ ...p, role: e.target.value as UserRole }))}
-          className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          className="w-full bg-white border border-[#E2E8F0] rounded-xl px-3 py-2.5 text-sm text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-[#00B8D9] transition min-h-[44px]"
         >
           {assignable.map((r) => (
-            <option key={r} value={r}>{r.replace("_", " ")}</option>
+            <option key={r} value={r}>{r.replace(/_/g, " ")}</option>
           ))}
         </select>
       </div>
 
+      <div>
+        <label className="block text-xs font-medium text-[#475569] mb-1.5">Event Access</label>
+        <select
+          value={form.eventAccess}
+          onChange={(e) => setForm((p) => ({ ...p, eventAccess: e.target.value }))}
+          className="w-full bg-white border border-[#E2E8F0] rounded-xl px-3 py-2.5 text-sm text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-[#00B8D9] transition min-h-[44px]"
+        >
+          <option value="">All events (default)</option>
+          {events.map((ev) => (
+            <option key={ev.id} value={ev.id}>{ev.name}</option>
+          ))}
+        </select>
+        <p className="text-[11px] text-[#94A3B8] mt-1">Per-event access scoping is not enforced yet — coming in a future release.</p>
+      </div>
+
       {actorRole === "platform_admin" && (
         <div>
-          <label className="block text-xs font-medium text-gray-400 mb-1.5">Tenant</label>
+          <label className="block text-xs font-medium text-[#475569] mb-1.5">Tenant</label>
           <select
             value={form.tenantId}
             onChange={(e) => setForm((p) => ({ ...p, tenantId: e.target.value }))}
-            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="w-full bg-white border border-[#E2E8F0] rounded-xl px-3 py-2.5 text-sm text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-[#00B8D9] transition min-h-[44px]"
           >
             <option value="">— select tenant —</option>
             {tenants.map((t) => (
@@ -216,18 +340,12 @@ function CreateUserForm({
       )}
 
       {error && (
-        <p className="text-xs text-red-400 bg-red-950/40 border border-red-900 rounded-lg px-3 py-2">
+        <p className="text-xs text-[#DC2626] bg-[#fee2e2] border border-[#DC2626]/20 rounded-xl px-3 py-2">
           {error}
         </p>
       )}
 
-      <button
-        type="submit"
-        disabled={loading}
-        className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white text-sm font-medium py-2 rounded-lg transition"
-      >
-        {loading ? "Creating…" : "Create user"}
-      </button>
+      <Button type="submit" loading={loading} className="w-full">Send Invite</Button>
     </form>
   );
 }
@@ -240,13 +358,13 @@ function Field({
 }) {
   return (
     <div>
-      <label className="block text-xs font-medium text-gray-400 mb-1.5">{label}</label>
+      <label className="block text-xs font-medium text-[#475569] mb-1.5">{label}</label>
       <input
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition"
+        className="w-full bg-white border border-[#E2E8F0] rounded-xl px-3 py-2.5 text-sm text-[#0F172A] placeholder-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#00B8D9] transition min-h-[44px]"
       />
     </div>
   );

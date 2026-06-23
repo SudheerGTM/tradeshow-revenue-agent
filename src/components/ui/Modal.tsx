@@ -24,18 +24,19 @@ export function Modal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-md bg-gray-900 border border-gray-800 rounded-2xl p-6 shadow-xl"
+        className="relative w-full max-w-md bg-white border border-[#E2E8F0] rounded-2xl p-5 sm:p-6 shadow-xl max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-sm font-semibold text-white">{title}</h2>
+          <h2 className="text-base font-semibold text-[#0F172A]">{title}</h2>
           <button
             onClick={onClose}
-            className="text-gray-500 hover:text-white p-1 rounded-md hover:bg-gray-800 transition"
+            aria-label="Close"
+            className="text-[#94A3B8] hover:text-[#0F172A] w-9 h-9 flex items-center justify-center rounded-lg hover:bg-[#F8FAFC] transition"
           >
             <X className="w-4 h-4" />
           </button>
