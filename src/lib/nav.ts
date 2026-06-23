@@ -1,5 +1,5 @@
 import {
-  LayoutDashboard, CalendarDays, Users, Brain, Building2, Star, Mail,
+  LayoutDashboard, CalendarDays, Users, Mail,
   RefreshCw, BarChart2, Settings, ShieldCheck, UserPlus, Zap, Briefcase, Kanban,
 } from "lucide-react";
 
@@ -11,14 +11,15 @@ export interface NavItem {
   roles?: string[];
 }
 
+// Conversation Intelligence, Company Intelligence, and Lead Scoring are not
+// standalone pages — they live as tabs inside /leads/[id] (the Lead Details
+// workspace). They never had top-level routes, so they're intentionally
+// omitted here rather than linking to a 404.
 export const NAV: NavItem[] = [
   { href: "/dashboard",          label: "Dashboard",               icon: LayoutDashboard, release: 1 },
   { href: "/events",             label: "Events",                  icon: CalendarDays,    release: 3 },
   { href: "/leads",              label: "Lead Intelligence",       icon: Users,           release: 3 },
   { href: "/leads/new",          label: "Capture Lead",            icon: UserPlus,        release: 3 },
-  { href: "/conversation-intel", label: "Conversation Intelligence", icon: Brain,         release: 6 },
-  { href: "/company-intel",      label: "Company Intelligence",    icon: Building2,       release: 7 },
-  { href: "/lead-scoring",       label: "Lead Scoring",            icon: Star,            release: 8 },
   { href: "/followups",          label: "Follow-Ups",              icon: Mail,            release: 9 },
   { href: "/crm-sync",           label: "CRM Sync",                icon: RefreshCw,       release: 10 },
   { href: "/opportunities",      label: "Opportunities",           icon: Briefcase,       release: 11 },
