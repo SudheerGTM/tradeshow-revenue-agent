@@ -345,7 +345,7 @@ export default async function DashboardPage() {
       </div>
 
       {/* Primary KPI row */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <KpiCard icon={Users}       label="Total Leads"     value={stats.total}     color="blue"     href="/leads" />
         <KpiCard icon={CalendarDays} label="Leads Captured"  value={stats.new}       color="turquoise" href="/leads?status=new" />
         <KpiCard icon={Star}        label="Qualified Leads"  value={stats.qualified}  color="success"  href="/leads?status=qualified" />
@@ -356,7 +356,7 @@ export default async function DashboardPage() {
       {/* Conversation Intelligence row */}
       <div>
         <SectionHeader title="Conversation Intelligence" icon={Brain} href="/leads" />
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-3">
           <KpiCard icon={Brain}         label="Total Insights"  value={ciStats.total}       color="blue"    href="/leads" />
           <KpiCard icon={AlertTriangle} label="Needs Review"    value={ciStats.needsReview}  color="warning" href="/leads" />
           <KpiCard icon={Zap}           label="High Urgency"    value={ciStats.highUrgency}  color="danger"  href="/leads" />
@@ -385,12 +385,12 @@ export default async function DashboardPage() {
       <div>
         <SectionHeader title="Company Intelligence" icon={Building2} href="/leads" />
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-3">
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <KpiCard icon={Sparkles}   label="Leads Enriched"  value={enrichStats.leadsEnriched}    color="blue"    href="/leads" />
             <KpiCard icon={Building2}  label="Companies Found" value={enrichStats.companiesEnriched} color="turquoise" href="/leads" />
             <KpiCard icon={TrendingUp} label="Success Rate"    value={`${enrichStats.successRate}%`} color="success" href="/leads" />
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="bg-white rounded-xl border border-[#E2E8F0] p-4 shadow-sm">
               <p className="text-xs font-semibold text-[#475569] uppercase tracking-wider mb-3">Top Industries</p>
               {topIndustries.length === 0 ? (
@@ -428,14 +428,14 @@ export default async function DashboardPage() {
       {/* Lead Scoring row */}
       <div>
         <SectionHeader title="Lead Scoring" icon={Star} href="/leads" />
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-3">
           <KpiCard icon={Flame}       label="Hot Leads"         value={scoreStats.hot}          color="danger"    href="/leads?classification=hot" />
           <KpiCard icon={Thermometer} label="Warm Leads"        value={scoreStats.warm}         color="warning"   href="/leads?classification=warm" />
           <KpiCard icon={Snowflake}   label="Cold Leads"        value={scoreStats.cold}         color="blue"      href="/leads?classification=cold" />
           <KpiCard icon={AlertTriangle} label="Needs Review"    value={scoreStats.needsReview}  color="turquoise" href="/leads?classification=needs_review" />
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <KpiCard icon={TrendingUp} label="Estimated Pipeline" value={scoreStats.totalPipeline > 0 ? `£${(scoreStats.totalPipeline / 1000).toFixed(0)}k` : "—"} color="blue" href="/leads" />
             <KpiCard icon={Zap}        label="Expected Revenue"   value={scoreStats.expectedRevenue > 0 ? `£${(scoreStats.expectedRevenue / 1000).toFixed(0)}k` : "—"} color="success" href="/leads" />
           </div>
@@ -476,7 +476,7 @@ export default async function DashboardPage() {
       {/* Follow-Up Intelligence row */}
       <div>
         <SectionHeader title="Follow-Up Intelligence" icon={Mail} href="/followups" />
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mt-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mt-3">
           <KpiCard icon={Inbox}         label="Follow-Ups Generated" value={followupStats.total}        color="blue"      href="/followups" />
           <KpiCard icon={Flame}         label="High Priority"        value={followupStats.highPriority}  color="danger"    href="/followups" />
           <KpiCard icon={AlertTriangle} label="Needs Review"         value={followupStats.needsReview}   color="warning"   href="/followups" />
@@ -488,7 +488,7 @@ export default async function DashboardPage() {
       {/* CRM Sync row */}
       <div>
         <SectionHeader title="CRM Sync" icon={RefreshCw} href="/crm-sync" />
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mt-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mt-3">
           <KpiCard icon={Clock}           label="CRM Sync Pending"   value={crmStats.pending}      color="turquoise" href="/crm-sync" />
           <KpiCard icon={CheckCircle}     label="CRM Sync Completed" value={crmStats.completed}    color="success"   href="/crm-sync" />
           <KpiCard icon={XCircle}         label="CRM Sync Failed"    value={crmStats.failed}       color="danger"    href="/crm-sync" />
@@ -500,7 +500,7 @@ export default async function DashboardPage() {
       {/* ROI Analytics row */}
       <div>
         <SectionHeader title="ROI Analytics" icon={BarChart3} href="/roi-analytics" />
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mt-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mt-3">
           <KpiCard icon={DollarSign} label="Total Event Cost" value={`£${(roiStats.totalEventCost / 1000).toFixed(0)}k`} color="blue"      href="/roi-analytics" />
           <KpiCard icon={TrendingUp} label="Total Pipeline"   value={`£${(roiStats.totalPipeline / 1000).toFixed(0)}k`}   color="turquoise" href="/roi-analytics" />
           <KpiCard icon={Zap}        label="Expected Revenue" value={`£${(roiStats.expectedRevenue / 1000).toFixed(0)}k`} color="success"   href="/roi-analytics" />
@@ -518,7 +518,7 @@ export default async function DashboardPage() {
       {/* Pipeline & Opportunities row */}
       <div>
         <SectionHeader title="Pipeline & Opportunities" icon={Kanban} href="/pipeline" />
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-3">
           <KpiCard icon={TrendingUp} label="Open Pipeline"    value={`£${(oppStats.openPipeline / 1000).toFixed(0)}k`}    color="blue"      href="/opportunities" />
           <KpiCard icon={Zap}        label="Expected Revenue" value={`£${(oppStats.expectedRevenue / 1000).toFixed(0)}k`} color="success"   href="/opportunities" />
           <KpiCard icon={Trophy}     label="Won Opportunities" value={oppStats.won}  color="success" href="/opportunities?status=won" />
@@ -571,7 +571,7 @@ export default async function DashboardPage() {
       {/* Transcription + Voice row */}
       <div>
         <SectionHeader title="Voice & Transcription" icon={Mic} href="/leads" />
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-3">
           <KpiCard icon={FileText}    label="Total Transcriptions"     value={txStats.total}     color="blue"    href="/leads" />
           <KpiCard icon={CheckCircle} label="Completed"                value={txStats.completed}  color="success" href="/leads" />
           <KpiCard icon={Clock}       label="Pending"                  value={txStats.pending}    color="warning" href="/leads" />

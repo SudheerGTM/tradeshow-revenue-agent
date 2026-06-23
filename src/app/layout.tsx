@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { SessionProvider } from "@/components/SessionProvider";
+import { ToastProvider } from "@/components/ui/Toast";
 
 const inter = Inter({ variable: "--font-inter", subsets: ["latin"], display: "swap" });
 
@@ -10,11 +11,19 @@ export const metadata: Metadata = {
   description: "Transform Every Booth Conversation into Qualified Pipeline",
 };
 
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+};
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${inter.variable} h-full antialiased`}>
-      <body className="min-h-full bg-[#F8FAFC] text-[#0F172A]">
-        <SessionProvider>{children}</SessionProvider>
+      <body className="min-h-full bg-[#F8FAFC] text-[#0F172A] overflow-x-hidden">
+        <SessionProvider>
+          <ToastProvider>{children}</ToastProvider>
+        </SessionProvider>
       </body>
     </html>
   );

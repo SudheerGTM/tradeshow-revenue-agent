@@ -23,18 +23,19 @@ export const TABS: { key: TabKey; label: string; icon: React.ComponentType<{ cla
 
 export function TabNav({ active, onChange }: { active: TabKey; onChange: (t: TabKey) => void }) {
   return (
-    <div className="bg-white border border-[#E2E8F0] rounded-2xl shadow-sm overflow-x-auto">
-      <div className="flex min-w-max px-1">
+    <div className="bg-white border border-[#E2E8F0] rounded-2xl shadow-sm overflow-x-auto -mx-1 px-1 sm:mx-0 sm:px-1">
+      {/* Mobile: scrollable chip row. Desktop/tablet: underline tabs. */}
+      <div className="flex min-w-max gap-1.5 p-2 sm:p-1 sm:gap-0">
         {TABS.map(t => {
           const isActive = t.key === active;
           return (
             <button
               key={t.key}
               onClick={() => onChange(t.key)}
-              className={`flex items-center gap-1.5 px-3.5 py-3 text-xs font-medium whitespace-nowrap border-b-2 transition ${
+              className={`flex items-center gap-1.5 px-3.5 py-2.5 sm:py-3 text-xs font-medium whitespace-nowrap transition rounded-full sm:rounded-none sm:border-b-2 min-h-[40px] sm:min-h-0 ${
                 isActive
-                  ? "border-[#0F4C81] text-[#0F4C81]"
-                  : "border-transparent text-[#64748B] hover:text-[#0F172A]"
+                  ? "bg-[#0F4C81] text-white sm:bg-transparent sm:border-[#0F4C81] sm:text-[#0F4C81]"
+                  : "bg-[#F8FAFC] text-[#64748B] sm:bg-transparent sm:border-transparent hover:text-[#0F172A]"
               }`}
             >
               <t.icon className="w-3.5 h-3.5" />

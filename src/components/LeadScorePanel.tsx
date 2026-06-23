@@ -6,6 +6,7 @@ import {
   Zap, TrendingUp, ShieldAlert, ChevronDown, ChevronUp,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { useToast } from "@/components/ui/Toast";
 
 type Classification = "hot" | "warm" | "cold" | "needs_review";
 
@@ -58,6 +59,7 @@ function fmtPct(val: string | null | undefined): string {
 }
 
 export function LeadScorePanel({ leadId }: Props) {
+  const toast = useToast();
   const [scores, setScores] = useState<ScoreRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
@@ -88,8 +90,11 @@ export function LeadScorePanel({ leadId }: Props) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Scoring failed");
       await fetchScores();
+      toast.success(`Lead scored ${Math.round(parseFloat(data.score))}/100 — ${data.classification}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Scoring failed");
+      const message = err instanceof Error ? err.message : "Scoring failed";
+      setError(message);
+      toast.error(message);
     } finally {
       setGenerating(false);
     }

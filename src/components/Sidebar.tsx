@@ -2,57 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  LayoutDashboard,
-  CalendarDays,
-  Users,
-  Brain,
-  Building2,
-  Star,
-  Mail,
-  RefreshCw,
-  BarChart2,
-  Settings,
-  ShieldCheck,
-  UserPlus,
-  ChevronLeft,
-  ChevronRight,
-  Zap,
-  Briefcase,
-  Kanban,
-} from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
+import { NAV, CURRENT_RELEASE } from "@/lib/nav";
 
-interface NavItem {
-  href: string;
-  label: string;
-  icon: React.ComponentType<{ className?: string }>;
-  release: number;
-  roles?: string[];
-  section?: string;
-}
-
-const NAV: NavItem[] = [
-  { href: "/dashboard",          label: "Dashboard",               icon: LayoutDashboard, release: 1 },
-  { href: "/events",             label: "Events",                  icon: CalendarDays,    release: 3 },
-  { href: "/leads",              label: "Lead Intelligence",       icon: Users,           release: 3 },
-  { href: "/leads/new",          label: "Capture Lead",            icon: UserPlus,        release: 3 },
-  { href: "/conversation-intel", label: "Conversation Intelligence", icon: Brain,         release: 6 },
-  { href: "/company-intel",      label: "Company Intelligence",    icon: Building2,       release: 7 },
-  { href: "/lead-scoring",       label: "Lead Scoring",            icon: Star,            release: 8 },
-  { href: "/followups",          label: "Follow-Ups",              icon: Mail,            release: 9 },
-  { href: "/crm-sync",           label: "CRM Sync",                icon: RefreshCw,       release: 10 },
-  { href: "/opportunities",      label: "Opportunities",           icon: Briefcase,       release: 11 },
-  { href: "/pipeline",           label: "Pipeline Board",          icon: Kanban,          release: 11 },
-  { href: "/roi-analytics",      label: "ROI Analytics",           icon: BarChart2,       release: 12 },
-  { href: "/admin/tenants",      label: "Tenants",                 icon: Zap,             release: 2, roles: ["platform_admin"] },
-  { href: "/admin/users",        label: "Users",                   icon: ShieldCheck,     release: 2, roles: ["platform_admin", "tenant_admin", "manager"] },
-  { href: "/settings/tenant",    label: "Settings",                icon: Settings,        release: 2 },
-];
-
-const CURRENT_RELEASE = 12;
-
+// Visible from md (tablet) up. Mobile uses MobileBottomNav + MobileNavDrawer
+// instead — see DashboardLayout.
 export function Sidebar({ role }: { role: string }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
@@ -64,14 +20,14 @@ export function Sidebar({ role }: { role: string }) {
   return (
     <aside
       className={cn(
-        "flex flex-col shrink-0 transition-all duration-200",
-        collapsed ? "w-16" : "w-60"
+        "hidden md:flex flex-col shrink-0 transition-all duration-200",
+        collapsed ? "w-16" : "w-16 lg:w-60"
       )}
       style={{ background: "#0F4C81", minHeight: "100vh" }}
     >
       {/* Logo */}
       <div
-        className="h-14 px-4 flex items-center gap-2.5 shrink-0"
+        className="h-14 px-3 lg:px-4 flex items-center gap-2.5 shrink-0"
         style={{ borderBottom: "1px solid rgba(255,255,255,0.12)" }}
       >
         <div
@@ -81,14 +37,15 @@ export function Sidebar({ role }: { role: string }) {
           <span className="text-white text-xs font-bold">TS</span>
         </div>
         {!collapsed && (
-          <div className="flex-1 min-w-0">
+          <div className="hidden lg:block flex-1 min-w-0">
             <p className="text-white text-xs font-bold truncate leading-tight">Trade Show</p>
             <p className="text-[10px] truncate leading-tight" style={{ color: "rgba(255,255,255,0.55)" }}>Revenue Agent</p>
           </div>
         )}
         <button
           onClick={() => setCollapsed(c => !c)}
-          className="text-white/50 hover:text-white transition shrink-0 ml-auto"
+          className="hidden lg:block text-white/50 hover:text-white transition shrink-0 ml-auto"
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
           {collapsed
             ? <ChevronRight className="w-4 h-4" />
@@ -107,10 +64,10 @@ export function Sidebar({ role }: { role: string }) {
               key={href}
               href={locked ? "#" : href}
               aria-disabled={locked}
-              title={collapsed ? label : undefined}
+              title={label}
               className={cn(
-                "flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm transition-all",
-                collapsed ? "justify-center" : "",
+                "flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm transition-all justify-center lg:justify-start",
+                collapsed && "lg:justify-center",
                 active
                   ? "text-white font-medium"
                   : locked
@@ -121,14 +78,14 @@ export function Sidebar({ role }: { role: string }) {
             >
               <Icon className="w-4 h-4 shrink-0 text-white" />
               {!collapsed && (
-                <>
-                  <span className="flex-1 truncate">{label}</span>
+                <span className="hidden lg:flex flex-1 truncate items-center justify-between gap-2">
+                  <span className="truncate">{label}</span>
                   {locked && (
-                    <span className="text-[9px] font-semibold text-white/30 bg-white/10 px-1.5 py-0.5 rounded">
+                    <span className="text-[9px] font-semibold text-white/30 bg-white/10 px-1.5 py-0.5 rounded shrink-0">
                       R{release}
                     </span>
                   )}
-                </>
+                </span>
               )}
             </Link>
           );
@@ -137,7 +94,7 @@ export function Sidebar({ role }: { role: string }) {
 
       {/* Role footer */}
       <div
-        className="p-3 shrink-0"
+        className="p-3 shrink-0 flex justify-center lg:justify-start"
         style={{ borderTop: "1px solid rgba(255,255,255,0.12)" }}
       >
         {collapsed ? (
@@ -145,9 +102,14 @@ export function Sidebar({ role }: { role: string }) {
             <span className="text-white text-[10px] font-bold uppercase">{role[0]}</span>
           </div>
         ) : (
-          <span className="text-[11px] uppercase tracking-wider font-medium text-white/40">
-            {role.replace(/_/g, " ")}
-          </span>
+          <>
+            <div className="lg:hidden w-7 h-7 rounded-full bg-white/20 flex items-center justify-center">
+              <span className="text-white text-[10px] font-bold uppercase">{role[0]}</span>
+            </div>
+            <span className="hidden lg:inline text-[11px] uppercase tracking-wider font-medium text-white/40">
+              {role.replace(/_/g, " ")}
+            </span>
+          </>
         )}
       </div>
     </aside>

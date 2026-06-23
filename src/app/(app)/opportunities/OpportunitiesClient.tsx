@@ -69,9 +69,9 @@ export function OpportunitiesClient({ events, users }: Props) {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-[#0F172A]">Opportunities</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-[#0F172A]">Opportunities</h1>
           <p className="text-sm text-[#475569] mt-0.5">Trade show leads tracked as pipeline opportunities</p>
         </div>
         <Link href="/pipeline" className="text-sm text-[#00B8D9] hover:text-[#009ab8] font-medium">
@@ -79,7 +79,7 @@ export function OpportunitiesClient({ events, users }: Props) {
         </Link>
       </div>
 
-      <div className="flex flex-wrap gap-3">
+      <div className="flex gap-3 overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0 sm:flex-wrap">
         <FilterSelect value={stage} onChange={setStage} placeholder="All Stages" options={Object.entries(STAGE_LABEL).map(([v, l]) => ({ value: v, label: l }))} />
         <FilterSelect value={priority} onChange={setPriority} placeholder="All Priorities" options={[{ value: "high", label: "High" }, { value: "medium", label: "Medium" }, { value: "low", label: "Low" }]} />
         <FilterSelect value={ownerId} onChange={setOwnerId} placeholder="All Owners" options={users.map(u => ({ value: u.id, label: u.name }))} />
@@ -100,44 +100,70 @@ export function OpportunitiesClient({ events, users }: Props) {
         ) : rows.length === 0 ? (
           <EmptyState icon={Briefcase} title="No opportunities found" description="Create an opportunity from a Hot or Warm lead's detail page." />
         ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-[#F1F5F9] text-left text-xs text-[#94A3B8] uppercase tracking-wider">
-                <th className="px-5 py-3 font-medium">Opportunity</th>
-                <th className="px-5 py-3 font-medium hidden md:table-cell">Company</th>
-                <th className="px-5 py-3 font-medium hidden lg:table-cell">Contact</th>
-                <th className="px-5 py-3 font-medium">Stage</th>
-                <th className="px-5 py-3 font-medium hidden lg:table-cell">Priority</th>
-                <th className="px-5 py-3 font-medium">Amount</th>
-                <th className="px-5 py-3 font-medium hidden md:table-cell">Probability</th>
-                <th className="px-5 py-3 font-medium">Exp. Revenue</th>
-                <th className="px-5 py-3 font-medium hidden lg:table-cell">Owner</th>
-                <th className="px-5 py-3 font-medium hidden md:table-cell">Close Date</th>
-                <th className="px-5 py-3 font-medium">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#F8FAFC]">
+          <>
+            {/* Mobile: card list */}
+            <div className="md:hidden divide-y divide-[#F8FAFC]">
               {rows.map(row => (
-                <tr key={row.id} className="hover:bg-[#F8FAFC] transition">
-                  <td className="px-5 py-3.5">
-                    <Link href={`/opportunities/${row.id}`} className="font-medium text-[#0F172A] hover:text-[#0F4C81] transition">
-                      {row.opportunityName}
-                    </Link>
-                  </td>
-                  <td className="px-5 py-3.5 text-[#475569] hidden md:table-cell">{row.companyName}</td>
-                  <td className="px-5 py-3.5 text-[#475569] hidden lg:table-cell">{row.contactName ?? "—"}</td>
-                  <td className="px-5 py-3.5"><Badge variant="blue">{STAGE_LABEL[row.stage]}</Badge></td>
-                  <td className="px-5 py-3.5 hidden lg:table-cell"><Badge variant={PRIORITY_VARIANT[row.priority]}>{row.priority}</Badge></td>
-                  <td className="px-5 py-3.5 text-sm font-medium text-[#0F172A]">{row.amount != null ? `£${row.amount.toLocaleString("en-GB")}` : "—"}</td>
-                  <td className="px-5 py-3.5 text-[#475569] text-xs hidden md:table-cell">{row.probability != null ? `${Math.round(row.probability * 100)}%` : "—"}</td>
-                  <td className="px-5 py-3.5 text-sm font-semibold text-[#16A34A]">{row.expectedRevenue != null ? `£${row.expectedRevenue.toLocaleString("en-GB")}` : "—"}</td>
-                  <td className="px-5 py-3.5 text-[#94A3B8] text-xs hidden lg:table-cell">{row.ownerName ?? "—"}</td>
-                  <td className="px-5 py-3.5 text-[#94A3B8] text-xs hidden md:table-cell">{row.expectedCloseDate ? new Date(row.expectedCloseDate).toLocaleDateString() : "—"}</td>
-                  <td className="px-5 py-3.5"><Badge variant={STATUS_VARIANT[row.status]}>{row.status}</Badge></td>
-                </tr>
+                <Link key={row.id} href={`/opportunities/${row.id}`} className="block p-4 active:bg-[#F8FAFC]">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-medium text-[#0F172A] truncate">{row.opportunityName}</p>
+                      <p className="text-xs text-[#475569] truncate mt-0.5">{row.companyName}</p>
+                    </div>
+                    <Badge variant="blue" className="shrink-0">{STAGE_LABEL[row.stage]}</Badge>
+                  </div>
+                  <div className="flex items-center justify-between mt-3">
+                    <span className="text-sm font-medium text-[#0F172A]">{row.amount != null ? `£${row.amount.toLocaleString("en-GB")}` : "—"}</span>
+                    <span className="text-sm font-semibold text-[#16A34A]">{row.expectedRevenue != null ? `£${row.expectedRevenue.toLocaleString("en-GB")}` : "—"}</span>
+                  </div>
+                  <div className="flex items-center justify-between mt-2">
+                    <Badge variant={STATUS_VARIANT[row.status]}>{row.status}</Badge>
+                    {row.ownerName && <span className="text-[11px] text-[#94A3B8]">{row.ownerName}</span>}
+                  </div>
+                </Link>
               ))}
-            </tbody>
-          </table>
+            </div>
+
+            {/* Tablet/Desktop: table */}
+            <table className="hidden md:table w-full text-sm">
+              <thead>
+                <tr className="border-b border-[#F1F5F9] text-left text-xs text-[#94A3B8] uppercase tracking-wider">
+                  <th className="px-5 py-3 font-medium">Opportunity</th>
+                  <th className="px-5 py-3 font-medium hidden md:table-cell">Company</th>
+                  <th className="px-5 py-3 font-medium hidden lg:table-cell">Contact</th>
+                  <th className="px-5 py-3 font-medium">Stage</th>
+                  <th className="px-5 py-3 font-medium hidden lg:table-cell">Priority</th>
+                  <th className="px-5 py-3 font-medium">Amount</th>
+                  <th className="px-5 py-3 font-medium hidden lg:table-cell">Probability</th>
+                  <th className="px-5 py-3 font-medium">Exp. Revenue</th>
+                  <th className="px-5 py-3 font-medium hidden lg:table-cell">Owner</th>
+                  <th className="px-5 py-3 font-medium hidden lg:table-cell">Close Date</th>
+                  <th className="px-5 py-3 font-medium">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#F8FAFC]">
+                {rows.map(row => (
+                  <tr key={row.id} className="hover:bg-[#F8FAFC] transition">
+                    <td className="px-5 py-3.5">
+                      <Link href={`/opportunities/${row.id}`} className="font-medium text-[#0F172A] hover:text-[#0F4C81] transition">
+                        {row.opportunityName}
+                      </Link>
+                    </td>
+                    <td className="px-5 py-3.5 text-[#475569] hidden md:table-cell">{row.companyName}</td>
+                    <td className="px-5 py-3.5 text-[#475569] hidden lg:table-cell">{row.contactName ?? "—"}</td>
+                    <td className="px-5 py-3.5"><Badge variant="blue">{STAGE_LABEL[row.stage]}</Badge></td>
+                    <td className="px-5 py-3.5 hidden lg:table-cell"><Badge variant={PRIORITY_VARIANT[row.priority]}>{row.priority}</Badge></td>
+                    <td className="px-5 py-3.5 text-sm font-medium text-[#0F172A]">{row.amount != null ? `£${row.amount.toLocaleString("en-GB")}` : "—"}</td>
+                    <td className="px-5 py-3.5 text-[#475569] text-xs hidden lg:table-cell">{row.probability != null ? `${Math.round(row.probability * 100)}%` : "—"}</td>
+                    <td className="px-5 py-3.5 text-sm font-semibold text-[#16A34A]">{row.expectedRevenue != null ? `£${row.expectedRevenue.toLocaleString("en-GB")}` : "—"}</td>
+                    <td className="px-5 py-3.5 text-[#94A3B8] text-xs hidden lg:table-cell">{row.ownerName ?? "—"}</td>
+                    <td className="px-5 py-3.5 text-[#94A3B8] text-xs hidden lg:table-cell">{row.expectedCloseDate ? new Date(row.expectedCloseDate).toLocaleDateString() : "—"}</td>
+                    <td className="px-5 py-3.5"><Badge variant={STATUS_VARIANT[row.status]}>{row.status}</Badge></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
         )}
       </div>
     </div>
@@ -151,7 +177,7 @@ function FilterSelect({ value, onChange, placeholder, options }: {
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className="bg-white border border-[#E2E8F0] rounded-xl px-3 py-2 text-sm text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-[#00B8D9] transition"
+      className="bg-white border border-[#E2E8F0] rounded-xl px-3 py-2.5 text-sm text-[#0F172A] focus:outline-none focus:ring-2 focus:ring-[#00B8D9] transition shrink-0 min-h-[40px]"
     >
       <option value="">{placeholder}</option>
       {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}

@@ -13,9 +13,9 @@ export default async function TenantSettingsPage() {
     return (
       <div className="space-y-6">
         <PageHeader title="Tenant Settings" description="Platform administrator — no tenant assigned" />
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 text-sm text-gray-400">
+        <div className="bg-white border border-[#E2E8F0] rounded-2xl shadow-sm p-5 sm:p-6 text-sm text-[#475569]">
           Platform admins manage tenants from{" "}
-          <a href="/admin/tenants" className="text-indigo-400 hover:underline">/admin/tenants</a>.
+          <a href="/admin/tenants" className="text-[#00B8D9] hover:text-[#009ab8] hover:underline">/admin/tenants</a>.
         </div>
       </div>
     );
@@ -35,33 +35,33 @@ export default async function TenantSettingsPage() {
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-2xl">
       <PageHeader
         title="Tenant Settings"
         description="Details about your organisation on this platform"
       />
 
-      <div className="bg-gray-900 border border-gray-800 rounded-xl divide-y divide-gray-800">
-        <div className="px-6 py-4 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-indigo-600/20 flex items-center justify-center">
-            <Building2 className="w-5 h-5 text-indigo-400" />
+      <div className="bg-white border border-[#E2E8F0] rounded-2xl shadow-sm divide-y divide-[#F1F5F9]">
+        <div className="px-4 sm:px-6 py-4 flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-[#dbeafe] flex items-center justify-center shrink-0">
+            <Building2 className="w-5 h-5 text-[#0F4C81]" />
           </div>
-          <div>
-            <p className="text-sm font-semibold text-white">{tenant.name}</p>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-[#0F172A] truncate">{tenant.name}</p>
             <Badge variant={statusBadge(tenant.status)} className="mt-1">{tenant.status}</Badge>
           </div>
         </div>
 
         {fields.map(({ label, value, mono }) => (
-          <div key={label} className="px-6 py-4 flex items-center justify-between">
-            <span className="text-sm text-gray-400">{label}</span>
-            <span className={`text-sm text-white ${mono ? "font-mono" : ""}`}>{value}</span>
+          <div key={label} className="px-4 sm:px-6 py-4 flex items-center justify-between gap-3">
+            <span className="text-sm text-[#94A3B8] shrink-0">{label}</span>
+            <span className={`text-sm text-[#0F172A] text-right truncate ${mono ? "font-mono text-xs" : ""}`}>{value}</span>
           </div>
         ))}
 
-        <div className="px-6 py-4 flex items-center justify-between">
-          <span className="text-sm text-gray-400">Tenant ID</span>
-          <span className="text-xs text-gray-500 font-mono">{tenant.id}</span>
+        <div className="px-4 sm:px-6 py-4 flex items-center justify-between gap-3">
+          <span className="text-sm text-[#94A3B8] shrink-0">Tenant ID</span>
+          <span className="text-xs text-[#94A3B8] font-mono truncate">{tenant.id}</span>
         </div>
       </div>
     </div>

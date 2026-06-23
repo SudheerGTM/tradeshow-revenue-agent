@@ -57,7 +57,7 @@ export function OverviewTab({
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
       <div className="lg:col-span-2 space-y-5">
         {/* KPI row */}
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
           <Kpi icon={Star} label="Lead Score" value={score ? `${Math.round(parseFloat(score.score))}` : "—"} color="#0F4C81" bg="#dbeafe" />
           <Kpi icon={Gauge} label="Classification" value={score ? capitalize(score.classification.replace("_", " ")) : "—"} color="#00B8D9" bg="#e6f8fc" small />
           <Kpi icon={CheckCircle2} label="Confidence" value={confidence != null ? `${confidence}%` : "—"} color="#16A34A" bg="#dcfce7" />

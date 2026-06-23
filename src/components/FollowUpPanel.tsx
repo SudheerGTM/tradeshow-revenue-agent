@@ -6,6 +6,7 @@ import {
   AlertTriangle, CheckCircle2, XCircle, ChevronDown, ChevronUp, Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { useToast } from "@/components/ui/Toast";
 
 type FollowupType = "email" | "linkedin" | "meeting_request" | "phone_call";
 type Priority = "high" | "medium" | "low";
@@ -59,6 +60,7 @@ const STATUS_STYLE: Record<Status, { bg: string; text: string; label: string }> 
 };
 
 export function FollowUpPanel({ leadId, userRole }: Props) {
+  const toast = useToast();
   const [drafts, setDrafts] = useState<FollowupRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
@@ -96,8 +98,11 @@ export function FollowUpPanel({ leadId, userRole }: Props) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Follow-up generation failed");
       await fetchDrafts();
+      toast.success(regenerate ? "Follow-up draft regenerated" : "Follow-up draft generated");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Follow-up generation failed");
+      const message = err instanceof Error ? err.message : "Follow-up generation failed";
+      setError(message);
+      toast.error(message);
     } finally {
       setGenerating(false);
     }

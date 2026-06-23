@@ -66,7 +66,7 @@ export function ROIImpactTab({ eventId, leadExpectedRevenue }: Props) {
             Full Dashboard <ArrowRight className="w-3 h-3" />
           </Link>
         </div>
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           <Stat icon={Users} label="Leads Captured" value={String(data.metrics.totalLeads)} color="#0F4C81" bg="#dbeafe" />
           <Stat icon={Star} label="Qualified Leads" value={String(data.metrics.qualifiedLeads)} color="#16A34A" bg="#dcfce7" />
           <Stat icon={Briefcase} label="Pipeline Generated" value={fmtGBP(data.metrics.pipelineGenerated)} color="#00B8D9" bg="#e6f8fc" />
