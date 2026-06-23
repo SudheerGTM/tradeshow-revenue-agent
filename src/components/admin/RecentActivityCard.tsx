@@ -5,16 +5,15 @@ export interface ActivityRow {
   action: string;
   userName: string | null;
   createdAt: string;
+  related?: string | null;
 }
 
 const ACTION_LABEL: Record<string, string> = {
   "lead.created": "Lead Captured",
   "lead.updated": "Lead Updated",
   "lead.status_changed": "Lead Status Changed",
-  "user.created": "User Added",
-  "user.updated": "Role/Status Changed",
-  "lead_score_generated": "Lead Score Generated",
-  "lead_score_regenerated": "Lead Score Regenerated",
+  "lead_score_generated": "Lead Scored",
+  "lead_score_regenerated": "Lead Re-Scored",
   "followup_generated": "Follow-Up Generated",
   "followup_approved": "Follow-Up Approved",
   "followup_rejected": "Follow-Up Rejected",
@@ -23,13 +22,10 @@ const ACTION_LABEL: Record<string, string> = {
   "crm_sync_completed": "CRM Sync Completed",
   "crm_sync_failed": "CRM Sync Failed",
   "opportunity_created": "Opportunity Created",
-  "opportunity_stage_changed": "Opportunity Stage Changed",
+  "opportunity_stage_changed": "Pipeline Updated",
+  "opportunity_amount_changed": "Pipeline Updated",
   "opportunity_won": "Opportunity Won",
   "opportunity_lost": "Opportunity Lost",
-  "event_cost_added": "Event Cost Added",
-  "roi_calculated": "ROI Calculated",
-  "executive_summary_generated": "Executive Summary Generated",
-  "report_exported": "Report Exported",
 };
 
 function describeAction(action: string): string {
@@ -52,7 +48,10 @@ export function RecentActivityCard({ rows }: { rows: ActivityRow[] }) {
               <div className="flex items-center gap-2.5 min-w-0">
                 <span className="w-1.5 h-1.5 rounded-full bg-[#00B8D9] shrink-0" />
                 <div className="min-w-0">
-                  <p className="text-sm text-[#0F172A] truncate">{describeAction(r.action)}</p>
+                  <p className="text-sm text-[#0F172A] truncate">
+                    {describeAction(r.action)}
+                    {r.related && <span className="text-[#475569] font-normal"> — {r.related}</span>}
+                  </p>
                   <p className="text-[11px] text-[#94A3B8] truncate">{r.userName ?? "System"}</p>
                 </div>
               </div>

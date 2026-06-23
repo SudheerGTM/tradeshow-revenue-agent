@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, Fragment } from "react";
-import { UserPlus, Users, RefreshCw, ChevronDown, ChevronUp, Target, Star, Briefcase, TrendingUp, UserCheck } from "lucide-react";
+import { useState } from "react";
+import { UserPlus, Users, RefreshCw, Target, Star, Briefcase, TrendingUp, UserCheck } from "lucide-react";
 import { Badge, statusBadge } from "@/components/ui/Badge";
 import { RoleBadge } from "@/components/admin/RoleBadge";
 import { KpiGrid } from "@/components/admin/KpiGrid";
+import { UserDrawer, type UserDrawerActivity } from "@/components/admin/UserDrawer";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Modal } from "@/components/ui/Modal";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -32,6 +33,7 @@ interface Props {
   tenants: Tenant[];
   events: Event[];
   userPerf: Record<string, UserPerf>;
+  userActivity: Record<string, UserDrawerActivity[]>;
   tenantKpis: TenantKpis;
   actorRole: string;
   actorTenantId?: string;
@@ -39,12 +41,16 @@ interface Props {
 
 function fmtGBP(n: number) { return `£${n.toLocaleString("en-GB", { maximumFractionDigits: 0 })}`; }
 
-export function UsersClient({ initial, tenants, events, userPerf, tenantKpis, actorRole, actorTenantId }: Props) {
+export function UsersClient({ initial, tenants, events, userPerf, userActivity, tenantKpis, actorRole, actorTenantId }: Props) {
   const toast = useToast();
   const [users, setUsers] = useState<UserRow[]>(initial);
   const [showInvite, setShowInvite] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [drawerUserId, setDrawerUserId] = useState<string | null>(null);
+
+  const drawerUser = users.find((u) => u.id === drawerUserId) ?? null;
+  const drawerPerf = drawerUserId ? (userPerf[drawerUserId] ?? { leadsCaptured: 0, qualifiedLeads: 0, opportunitiesCreated: 0, pipelineGenerated: 0 }) : { leadsCaptured: 0, qualifiedLeads: 0, opportunitiesCreated: 0, pipelineGenerated: 0 };
+  const drawerActivity = drawerUserId ? (userActivity[drawerUserId] ?? []) : [];
 
   const canCreate = actorRole === "platform_admin" || actorRole === "tenant_admin";
 
@@ -112,7 +118,7 @@ export function UsersClient({ initial, tenants, events, userPerf, tenantKpis, ac
             {users.map((u) => {
               const perf = userPerf[u.id] ?? { leadsCaptured: 0, qualifiedLeads: 0, opportunitiesCreated: 0, pipelineGenerated: 0 };
               return (
-                <div key={u.id} className="p-4 space-y-3">
+                <button key={u.id} onClick={() => setDrawerUserId(u.id)} className="w-full text-left p-4 space-y-3 active:bg-[#F8FAFC]">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <p className="font-medium text-[#0F172A] truncate">{u.name}</p>
@@ -124,20 +130,19 @@ export function UsersClient({ initial, tenants, events, userPerf, tenantKpis, ac
                   <div className="grid grid-cols-2 gap-2 text-xs text-[#475569]">
                     <span>Leads: <span className="font-semibold text-[#0F172A]">{perf.leadsCaptured}</span></span>
                     <span>Opportunities: <span className="font-semibold text-[#0F172A]">{perf.opportunitiesCreated}</span></span>
-                    <span>Last Active: {mockLastActive(u.id)}</span>
                     <span>Pipeline: <span className="font-semibold text-[#16A34A]">{fmtGBP(perf.pipelineGenerated)}</span></span>
+                    <span>Last Active: {mockLastActive(u.id)}</span>
                   </div>
                   {canCreate && (
-                    <button
-                      onClick={() => handleToggle(u)}
-                      disabled={togglingId === u.id}
-                      className="flex items-center gap-1.5 text-xs text-[#00B8D9] font-medium disabled:opacity-40 min-h-[36px]"
+                    <span
+                      onClick={(e) => { e.stopPropagation(); handleToggle(u); }}
+                      className="inline-flex items-center gap-1.5 text-xs text-[#00B8D9] font-medium min-h-[36px]"
                     >
                       {togglingId === u.id && <RefreshCw className="w-3 h-3 animate-spin" />}
                       {u.status === "active" ? "Deactivate" : "Activate"}
-                    </button>
+                    </span>
                   )}
-                </div>
+                </button>
               );
             })}
           </div>
@@ -152,66 +157,52 @@ export function UsersClient({ initial, tenants, events, userPerf, tenantKpis, ac
                 <th className="px-5 py-3 font-medium hidden lg:table-cell">Last Active</th>
                 <th className="px-5 py-3 font-medium">Leads</th>
                 <th className="px-5 py-3 font-medium hidden lg:table-cell">Opportunities</th>
+                <th className="px-5 py-3 font-medium">Pipeline Value</th>
                 <th className="px-5 py-3 font-medium"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#F1F5F9]">
               {users.map((u) => {
                 const perf = userPerf[u.id] ?? { leadsCaptured: 0, qualifiedLeads: 0, opportunitiesCreated: 0, pipelineGenerated: 0 };
-                const expanded = expandedId === u.id;
                 return (
-                  <Fragment key={u.id}>
-                    <tr className="hover:bg-[#F8FAFC] transition">
-                      <td className="px-5 py-3.5">
-                        <p className="font-medium text-[#0F172A]">{u.name}</p>
-                        <p className="text-xs text-[#94A3B8]">{u.email}</p>
-                      </td>
-                      <td className="px-5 py-3.5"><RoleBadge role={u.role} /></td>
-                      <td className="px-5 py-3.5"><Badge variant={statusBadge(u.status)}>{u.status}</Badge></td>
-                      <td className="px-5 py-3.5 text-[#475569] text-xs hidden lg:table-cell">{mockLastActive(u.id)}</td>
-                      <td className="px-5 py-3.5 text-[#0F172A] font-medium">{perf.leadsCaptured}</td>
-                      <td className="px-5 py-3.5 text-[#0F172A] font-medium hidden lg:table-cell">{perf.opportunitiesCreated}</td>
-                      <td className="px-5 py-3.5 text-right">
-                        <div className="flex items-center justify-end gap-3">
-                          <button
-                            onClick={() => setExpandedId(expanded ? null : u.id)}
-                            className="text-[#94A3B8] hover:text-[#0F172A] transition"
-                            aria-label="Toggle performance details"
-                          >
-                            {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                          </button>
-                          {canCreate && (
-                            <button
-                              onClick={() => handleToggle(u)}
-                              disabled={togglingId === u.id}
-                              className="flex items-center gap-1.5 text-xs text-[#475569] hover:text-[#0F172A] transition disabled:opacity-40"
-                            >
-                              {togglingId === u.id && <RefreshCw className="w-3 h-3 animate-spin" />}
-                              {u.status === "active" ? "Deactivate" : "Activate"}
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                    {expanded && (
-                      <tr className="bg-[#F8FAFC]">
-                        <td colSpan={7} className="px-5 py-4">
-                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                            <PerfStat label="Leads Captured" value={String(perf.leadsCaptured)} />
-                            <PerfStat label="Qualified Leads" value={String(perf.qualifiedLeads)} />
-                            <PerfStat label="Opportunities Created" value={String(perf.opportunitiesCreated)} />
-                            <PerfStat label="Pipeline Generated" value={fmtGBP(perf.pipelineGenerated)} highlight />
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </Fragment>
+                  <tr key={u.id} className="hover:bg-[#F8FAFC] transition cursor-pointer" onClick={() => setDrawerUserId(u.id)}>
+                    <td className="px-5 py-3.5">
+                      <p className="font-medium text-[#0F172A]">{u.name}</p>
+                      <p className="text-xs text-[#94A3B8]">{u.email}</p>
+                    </td>
+                    <td className="px-5 py-3.5"><RoleBadge role={u.role} /></td>
+                    <td className="px-5 py-3.5"><Badge variant={statusBadge(u.status)}>{u.status}</Badge></td>
+                    <td className="px-5 py-3.5 text-[#475569] text-xs hidden lg:table-cell">{mockLastActive(u.id)}</td>
+                    <td className="px-5 py-3.5 text-[#0F172A] font-medium">{perf.leadsCaptured}</td>
+                    <td className="px-5 py-3.5 text-[#0F172A] font-medium hidden lg:table-cell">{perf.opportunitiesCreated}</td>
+                    <td className="px-5 py-3.5 text-[#16A34A] font-semibold">{fmtGBP(perf.pipelineGenerated)}</td>
+                    <td className="px-5 py-3.5 text-right">
+                      {canCreate && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleToggle(u); }}
+                          disabled={togglingId === u.id}
+                          className="flex items-center gap-1.5 text-xs text-[#475569] hover:text-[#0F172A] transition disabled:opacity-40 ml-auto"
+                        >
+                          {togglingId === u.id && <RefreshCw className="w-3 h-3 animate-spin" />}
+                          {u.status === "active" ? "Deactivate" : "Activate"}
+                        </button>
+                      )}
+                    </td>
+                  </tr>
                 );
               })}
             </tbody>
           </table>
         </div>
       )}
+
+      <UserDrawer
+        open={!!drawerUserId}
+        onClose={() => setDrawerUserId(null)}
+        user={drawerUser}
+        perf={drawerPerf}
+        recentActivity={drawerActivity}
+      />
 
       {canCreate && (
         <Modal open={showInvite} onClose={() => setShowInvite(false)} title="Invite User">
@@ -228,14 +219,6 @@ export function UsersClient({ initial, tenants, events, userPerf, tenantKpis, ac
   );
 }
 
-function PerfStat({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
-  return (
-    <div>
-      <p className={`text-lg font-bold ${highlight ? "text-[#16A34A]" : "text-[#0F172A]"}`}>{value}</p>
-      <p className="text-[11px] text-[#94A3B8] mt-0.5">{label}</p>
-    </div>
-  );
-}
 
 const ASSIGNABLE_ROLES: Record<string, UserRole[]> = {
   platform_admin: ["platform_admin", "tenant_admin", "manager", "booth_user"],

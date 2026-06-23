@@ -6,6 +6,8 @@ interface Integration {
   name: string;
   status: IntegrationStatus;
   note?: string;
+  detailLabel?: string;
+  detailValue?: string;
 }
 
 const STATUS_META: Record<IntegrationStatus, { label: string; bg: string; text: string; icon: typeof CheckCircle2 }> = {
@@ -29,6 +31,11 @@ export function IntegrationsStatusCard({ integrations }: { integrations: Integra
               <div className="min-w-0">
                 <p className="text-sm font-medium text-[#0F172A]">{i.name}</p>
                 {i.note && <p className="text-[11px] text-[#94A3B8] mt-0.5">{i.note}</p>}
+                {i.detailLabel && (
+                  <p className="text-[11px] text-[#94A3B8] mt-0.5">
+                    {i.detailLabel}: <span className="text-[#475569] font-medium">{i.detailValue}</span>
+                  </p>
+                )}
               </div>
               <span
                 className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-lg shrink-0"

@@ -102,12 +102,30 @@ export default async function UsersPage() {
     ? await db.select().from(schema.events).orderBy(schema.events.name)
     : await db.select().from(schema.events).where(eq(schema.events.tenantId, session.user.tenantId!)).orderBy(schema.events.name);
 
+  // Recent activity per user — fetched in bulk, grouped client-side (top 5 each)
+  const userActivity: Record<string, { id: string; action: string; createdAt: string }[]> = {};
+  for (const u of users) userActivity[u.id] = [];
+  if (userIds.length) {
+    const rows = await db
+      .select({ id: schema.auditLogs.id, userId: schema.auditLogs.userId, action: schema.auditLogs.action, createdAt: schema.auditLogs.createdAt })
+      .from(schema.auditLogs)
+      .where(inArray(schema.auditLogs.userId, userIds))
+      .orderBy(desc(schema.auditLogs.createdAt))
+      .limit(200);
+    for (const r of rows) {
+      if (r.userId && userActivity[r.userId] && userActivity[r.userId].length < 5) {
+        userActivity[r.userId].push({ id: r.id, action: r.action, createdAt: r.createdAt.toISOString() });
+      }
+    }
+  }
+
   return (
     <UsersClient
       initial={users}
       tenants={tenants}
       events={events}
       userPerf={userPerf}
+      userActivity={userActivity}
       tenantKpis={tenantKpis}
       actorRole={session.user.role}
       actorTenantId={session.user.tenantId}
