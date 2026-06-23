@@ -4,7 +4,7 @@ import { useState } from "react";
 import { ArrowLeft, Clock, User, Building2, Mail, Phone, Globe, Tag } from "lucide-react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/Badge";
-import { Select, Textarea } from "@/components/ui/Input";
+import { Select, Textarea, Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { VoiceRecorder } from "@/components/VoiceRecorder";
 import { ConversationIntelligence } from "@/components/ConversationIntelligence";
@@ -43,6 +43,27 @@ export function LeadDetailClient({ lead, history, eventName, creatorName, availa
   const [saved, setSaved] = useState(false);
   const [localHistory, setLocalHistory] = useState(history);
 
+  const [editingContact, setEditingContact] = useState(false);
+  const [contact, setContact] = useState({
+    firstName: lead.firstName,
+    lastName: lead.lastName ?? "",
+    jobTitle: lead.jobTitle ?? "",
+    companyName: lead.companyName,
+    email: lead.email ?? "",
+    phone: lead.phone ?? "",
+    country: lead.country ?? "",
+  });
+  const [contactError, setContactError] = useState("");
+  const [savingContact, setSavingContact] = useState(false);
+
+  async function refreshHistory() {
+    const detail = await fetch(`/api/leads/${lead.id}`);
+    if (detail.ok) {
+      const data = await detail.json();
+      setLocalHistory(data.history);
+    }
+  }
+
   async function handleSave() {
     setSaving(true);
     const res = await fetch(`/api/leads/${lead.id}`, {
@@ -54,12 +75,43 @@ export function LeadDetailClient({ lead, history, eventName, creatorName, availa
     if (res.ok) {
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
-      const detail = await fetch(`/api/leads/${lead.id}`);
-      if (detail.ok) {
-        const data = await detail.json();
-        setLocalHistory(data.history);
-      }
+      await refreshHistory();
     }
+  }
+
+  async function handleSaveContact() {
+    if (!contact.firstName.trim()) { setContactError("First name is required"); return; }
+    if (!contact.companyName.trim()) { setContactError("Company name is required"); return; }
+
+    setContactError("");
+    setSavingContact(true);
+    const res = await fetch(`/api/leads/${lead.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(contact),
+    });
+    setSavingContact(false);
+    if (res.ok) {
+      setEditingContact(false);
+      await refreshHistory();
+    } else {
+      const data = await res.json().catch(() => ({}));
+      setContactError(data.error ?? "Failed to save changes");
+    }
+  }
+
+  function cancelEditContact() {
+    setContact({
+      firstName: lead.firstName,
+      lastName: lead.lastName ?? "",
+      jobTitle: lead.jobTitle ?? "",
+      companyName: lead.companyName,
+      email: lead.email ?? "",
+      phone: lead.phone ?? "",
+      country: lead.country ?? "",
+    });
+    setContactError("");
+    setEditingContact(false);
   }
 
   return (
@@ -71,10 +123,10 @@ export function LeadDetailClient({ lead, history, eventName, creatorName, availa
         </Link>
         <div className="flex-1">
           <h1 className="text-xl font-bold text-[#0F172A]">
-            {lead.firstName} {lead.lastName ?? ""}
+            {contact.firstName} {contact.lastName}
           </h1>
           <p className="text-sm text-[#475569] mt-0.5">
-            {lead.jobTitle ?? ""}{lead.jobTitle && lead.companyName ? " · " : ""}{lead.companyName}
+            {contact.jobTitle}{contact.jobTitle && contact.companyName ? " · " : ""}{contact.companyName}
           </p>
         </div>
         <Badge variant={STATUS_COLORS[status] ?? "gray"} className="text-sm px-3 py-1">
@@ -86,30 +138,64 @@ export function LeadDetailClient({ lead, history, eventName, creatorName, availa
         {/* Left: details */}
         <div className="lg:col-span-2 space-y-4">
           {/* Contact info */}
-          <div className="bg-white border border-[#E2E8F0] rounded-xl divide-y divide-[#F1F5F9] shadow-sm">
-            <div className="px-5 py-3.5 text-xs font-semibold text-[#475569] uppercase tracking-wider">
-              Contact Information
+          <div className="bg-white border border-[#E2E8F0] rounded-xl shadow-sm">
+            <div className="px-5 py-3.5 flex items-center justify-between">
+              <p className="text-xs font-semibold text-[#475569] uppercase tracking-wider">Contact Information</p>
+              {!editingContact && (
+                <button
+                  onClick={() => setEditingContact(true)}
+                  className="text-xs text-[#00B8D9] hover:text-[#009ab8] font-medium"
+                >
+                  Edit
+                </button>
+              )}
             </div>
-            {[
-              { icon: Building2, label: "Company",     value: lead.companyName },
-              { icon: Mail,      label: "Email",       value: lead.email },
-              { icon: Phone,     label: "Phone",       value: lead.phone },
-              { icon: Globe,     label: "Country",     value: lead.country },
-              { icon: Tag,       label: "Source",      value: SOURCE_LABELS[lead.source] ?? lead.source },
-              { icon: User,      label: "Captured by", value: creatorName ?? "QR Form / Public" },
-              { icon: Clock,     label: "Captured",    value: new Date(lead.createdAt).toLocaleString() },
-            ].map(({ icon: Icon, label, value }) => value ? (
-              <div key={label} className="px-5 py-3.5 flex items-center gap-3">
-                <Icon className="w-4 h-4 text-[#94A3B8] shrink-0" />
-                <span className="text-xs text-[#94A3B8] w-24 shrink-0">{label}</span>
-                <span className="text-sm text-[#0F172A]">{value}</span>
+
+            {editingContact ? (
+              <div className="px-5 pb-5 space-y-3">
+                {contactError && (
+                  <p className="text-xs text-[#DC2626] bg-[#fee2e2] border border-[#DC2626]/20 rounded-xl px-3 py-2">{contactError}</p>
+                )}
+                <div className="grid grid-cols-2 gap-3">
+                  <Input label="First Name *" value={contact.firstName} onChange={(e) => setContact(c => ({ ...c, firstName: e.target.value }))} />
+                  <Input label="Last Name" value={contact.lastName} onChange={(e) => setContact(c => ({ ...c, lastName: e.target.value }))} />
+                </div>
+                <Input label="Job Title" value={contact.jobTitle} onChange={(e) => setContact(c => ({ ...c, jobTitle: e.target.value }))} />
+                <Input label="Company *" value={contact.companyName} onChange={(e) => setContact(c => ({ ...c, companyName: e.target.value }))} />
+                <div className="grid grid-cols-2 gap-3">
+                  <Input label="Email" type="email" value={contact.email} onChange={(e) => setContact(c => ({ ...c, email: e.target.value }))} />
+                  <Input label="Phone" value={contact.phone} onChange={(e) => setContact(c => ({ ...c, phone: e.target.value }))} />
+                </div>
+                <Input label="Country" value={contact.country} onChange={(e) => setContact(c => ({ ...c, country: e.target.value }))} />
+                <div className="flex gap-2 pt-1">
+                  <Button onClick={handleSaveContact} loading={savingContact} className="flex-1">Save</Button>
+                  <Button onClick={cancelEditContact} variant="secondary" className="flex-1">Cancel</Button>
+                </div>
               </div>
-            ) : null)}
-            {eventName && (
-              <div className="px-5 py-3.5 flex items-center gap-3">
-                <Clock className="w-4 h-4 text-[#94A3B8] shrink-0" />
-                <span className="text-xs text-[#94A3B8] w-24 shrink-0">Event</span>
-                <span className="text-sm text-[#0F172A]">{eventName}</span>
+            ) : (
+              <div className="divide-y divide-[#F1F5F9]">
+                {[
+                  { icon: Building2, label: "Company",     value: contact.companyName },
+                  { icon: Mail,      label: "Email",       value: contact.email },
+                  { icon: Phone,     label: "Phone",       value: contact.phone },
+                  { icon: Globe,     label: "Country",     value: contact.country },
+                  { icon: Tag,       label: "Source",      value: SOURCE_LABELS[lead.source] ?? lead.source },
+                  { icon: User,      label: "Captured by", value: creatorName ?? "QR Form / Public" },
+                  { icon: Clock,     label: "Captured",    value: new Date(lead.createdAt).toLocaleString() },
+                ].map(({ icon: Icon, label, value }) => value ? (
+                  <div key={label} className="px-5 py-3.5 flex items-center gap-3">
+                    <Icon className="w-4 h-4 text-[#94A3B8] shrink-0" />
+                    <span className="text-xs text-[#94A3B8] w-24 shrink-0">{label}</span>
+                    <span className="text-sm text-[#0F172A]">{value}</span>
+                  </div>
+                ) : null)}
+                {eventName && (
+                  <div className="px-5 py-3.5 flex items-center gap-3">
+                    <Clock className="w-4 h-4 text-[#94A3B8] shrink-0" />
+                    <span className="text-xs text-[#94A3B8] w-24 shrink-0">Event</span>
+                    <span className="text-sm text-[#0F172A]">{eventName}</span>
+                  </div>
+                )}
               </div>
             )}
           </div>

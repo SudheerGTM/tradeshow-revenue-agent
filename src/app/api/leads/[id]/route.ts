@@ -64,22 +64,46 @@ export async function PATCH(
   const { id } = await params;
   const tenantId = session.user.tenantId!;
 
+  const existingConditions = [eq(schema.leads.id, id), eq(schema.leads.tenantId, tenantId)];
+  if (session.user.role === "booth_user") {
+    existingConditions.push(eq(schema.leads.createdByUserId, session.user.id!));
+  }
+
   const existing = await db
     .select({ id: schema.leads.id, status: schema.leads.status })
     .from(schema.leads)
-    .where(and(eq(schema.leads.id, id), eq(schema.leads.tenantId, tenantId)))
+    .where(and(...existingConditions))
     .limit(1);
 
   if (!existing.length) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const body = await req.json();
-  const { status, notes } = body as { status?: string; notes?: string };
+  const {
+    status, notes, firstName, lastName, jobTitle, companyName, email, phone, country,
+  } = body as {
+    status?: string; notes?: string; firstName?: string; lastName?: string;
+    jobTitle?: string; companyName?: string; email?: string; phone?: string; country?: string;
+  };
+
+  if (firstName !== undefined && !firstName.trim()) {
+    return NextResponse.json({ error: "First name cannot be empty" }, { status: 400 });
+  }
+  if (companyName !== undefined && !companyName.trim()) {
+    return NextResponse.json({ error: "Company name cannot be empty" }, { status: 400 });
+  }
 
   const [updated] = await db
     .update(schema.leads)
     .set({
       ...(status && { status: status as typeof schema.leads.$inferSelect["status"] }),
       ...(notes !== undefined && { notes }),
+      ...(firstName !== undefined && { firstName: firstName.trim() }),
+      ...(lastName !== undefined && { lastName: lastName.trim() || null }),
+      ...(jobTitle !== undefined && { jobTitle: jobTitle.trim() || null }),
+      ...(companyName !== undefined && { companyName: companyName.trim() }),
+      ...(email !== undefined && { email: email.trim() || null }),
+      ...(phone !== undefined && { phone: phone.trim() || null }),
+      ...(country !== undefined && { country: country.trim() || null }),
       updatedAt: new Date(),
     })
     .where(eq(schema.leads.id, id))
@@ -98,6 +122,13 @@ export async function PATCH(
     metadata: {
       ...(status && { from: existing[0].status, to: status }),
       ...(notes !== undefined && { notes }),
+      ...(firstName !== undefined && { firstName }),
+      ...(lastName !== undefined && { lastName }),
+      ...(jobTitle !== undefined && { jobTitle }),
+      ...(companyName !== undefined && { companyName }),
+      ...(email !== undefined && { email }),
+      ...(phone !== undefined && { phone }),
+      ...(country !== undefined && { country }),
     },
   });
 
