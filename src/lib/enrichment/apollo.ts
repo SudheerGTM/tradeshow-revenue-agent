@@ -97,17 +97,24 @@ export async function searchPerson(params: {
 }): Promise<ApolloContactResult | null> {
   if (!params.firstName && !params.email) return null;
 
-  // Apollo ANDs all filters together, so a hard email match combined with
-  // name/company filters returns zero results if the email is wrong —
+  // Apollo's old /people/search endpoint is deprecated for API callers and
+  // now always returns 422 — every contact search was silently failing
+  // before this fix, independent of query quality. The current flow is two
+  // calls: (1) /mixed_people/api_search to find a candidate (returns a
+  // privacy-obfuscated result — partial last name, no LinkedIn), then
+  // (2) /people/match with that id to reveal full details. Skipping step 2
+  // would mean storing "Cr***z" as a contact's surname.
+  //
+  // Apollo also ANDs all filters together, so a hard email match combined
+  // with name/company filters returns zero results if the email is wrong —
   // which is common for trade-show leads (reps often capture placeholder
   // emails like "test@test.com" on the show floor). Name + company is a
-  // far more reliable signal in this context, so search on that first and
-  // only fall back to an email-based search if it's the only thing we have.
+  // far more reliable signal here, so search on that first.
   //
   // Linking by organization_id (resolved from a prior company search) is
-  // far more reliable than a free-text q_organization_name match on people
-  // search — Apollo's people index is keyed off the org's canonical ID, not
-  // an arbitrary name string, so pass it whenever the caller has one.
+  // far more reliable than a free-text q_organization_name match — Apollo's
+  // people index is keyed off the org's canonical ID, not an arbitrary name
+  // string — so pass it whenever the caller has one.
   if (params.firstName) {
     const nameBody: Record<string, unknown> = {
       page: 1, per_page: 1,
@@ -119,31 +126,45 @@ export async function searchPerson(params: {
       nameBody.q_organization_name = params.companyName;
     }
 
-    const nameData = await apolloPost("/people/search", nameBody) as { people?: ApolloPerson[] };
-    let nameMatch = nameData.people?.[0];
+    let candidate = await findPersonCandidate(nameBody);
 
     // If filtering by organization returned nothing, retry on name alone —
     // the org filter may be too strict (e.g. subsidiary/trading name mismatch).
-    if (!nameMatch && (params.organizationId || params.companyName)) {
-      const looseData = await apolloPost("/people/search", {
+    if (!candidate && (params.organizationId || params.companyName)) {
+      candidate = await findPersonCandidate({
         page: 1, per_page: 1,
         q_person_name: [params.firstName, params.lastName].filter(Boolean).join(" "),
-      }) as { people?: ApolloPerson[] };
-      nameMatch = looseData.people?.[0];
+      });
     }
 
-    if (nameMatch) return mapPerson(nameMatch);
+    if (candidate) {
+      const full = await matchPerson(candidate.id);
+      if (full) return mapPerson(full);
+    }
   }
 
   if (params.email && isLikelyRealEmail(params.email)) {
-    const emailData = await apolloPost("/people/search", {
-      page: 1, per_page: 1, q_emails: [params.email],
-    }) as { people?: ApolloPerson[] };
-    const emailMatch = emailData.people?.[0];
-    if (emailMatch) return mapPerson(emailMatch);
+    const candidate = await findPersonCandidate({ page: 1, per_page: 1, q_emails: [params.email] });
+    if (candidate) {
+      const full = await matchPerson(candidate.id);
+      if (full) return mapPerson(full);
+    }
   }
 
   return null;
+}
+
+// Step 1: search (lightweight, privacy-obfuscated results, no credit cost)
+async function findPersonCandidate(body: Record<string, unknown>): Promise<{ id: string } | null> {
+  const data = await apolloPost("/mixed_people/api_search", body) as { people?: { id?: string }[] };
+  const person = data.people?.[0];
+  return person?.id ? { id: person.id } : null;
+}
+
+// Step 2: match (full enrichment — name, LinkedIn, seniority, etc.)
+async function matchPerson(id: string): Promise<ApolloPerson | null> {
+  const data = await apolloPost("/people/match", { id }) as { person?: ApolloPerson };
+  return data.person ?? null;
 }
 
 // Filters out obvious placeholder/test addresses captured on the show floor
