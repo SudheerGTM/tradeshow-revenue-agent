@@ -2,7 +2,7 @@ import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { isManager, isPlatformAdmin } from "@/lib/permissions";
 import { db, schema } from "@/db";
-import { eq, and, desc, sql, inArray } from "drizzle-orm";
+import { eq, and, desc, sql, inArray, lt } from "drizzle-orm";
 import { UsersClient } from "./UsersClient";
 
 export default async function UsersPage() {
@@ -11,27 +11,24 @@ export default async function UsersPage() {
 
   const tenants = await db.select().from(schema.tenants).orderBy(schema.tenants.name);
 
+  const userCols = {
+    id:                 schema.users.id,
+    name:               schema.users.name,
+    email:              schema.users.email,
+    role:               schema.users.role,
+    status:             schema.users.status,
+    tenantId:           schema.users.tenantId,
+    createdAt:          schema.users.createdAt,
+    lastLoginAt:        schema.users.lastLoginAt,
+    allEvents:          schema.users.allEvents,
+    onboardingStep:     schema.users.onboardingStep,
+  };
+
   let users;
   if (isPlatformAdmin(session.user.role)) {
-    users = await db.select({
-      id:        schema.users.id,
-      name:      schema.users.name,
-      email:     schema.users.email,
-      role:      schema.users.role,
-      status:    schema.users.status,
-      tenantId:  schema.users.tenantId,
-      createdAt: schema.users.createdAt,
-    }).from(schema.users).orderBy(schema.users.createdAt);
+    users = await db.select(userCols).from(schema.users).orderBy(schema.users.createdAt);
   } else {
-    users = await db.select({
-      id:        schema.users.id,
-      name:      schema.users.name,
-      email:     schema.users.email,
-      role:      schema.users.role,
-      status:    schema.users.status,
-      tenantId:  schema.users.tenantId,
-      createdAt: schema.users.createdAt,
-    }).from(schema.users)
+    users = await db.select(userCols).from(schema.users)
       .where(eq(schema.users.tenantId, session.user.tenantId!))
       .orderBy(schema.users.createdAt);
   }
@@ -119,13 +116,43 @@ export default async function UsersPage() {
     }
   }
 
+  // Per-user assigned event names (for users with allEvents = false)
+  const userEventNames: Record<string, string[]> = {};
+  for (const u of users) userEventNames[u.id] = [];
+  if (userIds.length) {
+    const accessRows = await db
+      .select({ userId: schema.userEventAccess.userId, eventName: schema.events.name })
+      .from(schema.userEventAccess)
+      .innerJoin(schema.events, eq(schema.userEventAccess.eventId, schema.events.id))
+      .where(inArray(schema.userEventAccess.userId, userIds));
+    for (const r of accessRows) {
+      if (userEventNames[r.userId]) userEventNames[r.userId].push(r.eventName);
+    }
+  }
+
+  // Lazily flip stale pending invitations to expired before listing
+  await db.update(schema.userInvitations)
+    .set({ status: "expired" })
+    .where(and(eq(schema.userInvitations.status, "pending"), lt(schema.userInvitations.expiresAt, new Date())));
+
+  // Pending/expired invitations for this tenant (or all tenants for platform_admin)
+  const invitations = isPlatformAdmin(session.user.role)
+    ? await db.select().from(schema.userInvitations)
+        .where(inArray(schema.userInvitations.status, ["pending", "expired"]))
+        .orderBy(desc(schema.userInvitations.createdAt))
+    : await db.select().from(schema.userInvitations)
+        .where(and(eq(schema.userInvitations.tenantId, session.user.tenantId!), inArray(schema.userInvitations.status, ["pending", "expired"])))
+        .orderBy(desc(schema.userInvitations.createdAt));
+
   return (
     <UsersClient
       initial={users}
+      invitations={invitations}
       tenants={tenants}
       events={events}
       userPerf={userPerf}
       userActivity={userActivity}
+      userEventNames={userEventNames}
       tenantKpis={tenantKpis}
       actorRole={session.user.role}
       actorTenantId={session.user.tenantId}

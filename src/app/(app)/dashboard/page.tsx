@@ -2,13 +2,14 @@ import { auth } from "@/lib/auth";
 import { getTenantById } from "@/lib/tenant";
 import { cookies } from "next/headers";
 import { db, schema } from "@/db";
-import { eq, sql, isNull, and, desc } from "drizzle-orm";
+import { eq, sql, isNull, and, desc, inArray } from "drizzle-orm";
+import { isTenantAdmin } from "@/lib/permissions";
 import {
   Users, Star, Mail, Mic, FileText, CheckCircle, XCircle, Clock,
   Brain, AlertTriangle, Zap, Package, Sparkles, Building2, TrendingUp,
   CalendarDays, BarChart2, Flame, Thermometer, Snowflake, Inbox,
   RefreshCw, Briefcase, ClipboardList, Trophy, ThumbsDown, Kanban,
-  DollarSign, BarChart3, Workflow, Bot, Gauge,
+  DollarSign, BarChart3, Workflow, Bot, Gauge, QrCode, IdCard, Timer, UserCheck,
 } from "lucide-react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/Badge";
@@ -21,6 +22,16 @@ export default async function DashboardPage() {
   const tenant = session?.user?.tenantId
     ? await getTenantById(session.user.tenantId)
     : null;
+
+  let onboardingStep = 5;
+  if (session?.user?.id) {
+    const [me] = await db
+      .select({ onboardingStep: schema.users.onboardingStep })
+      .from(schema.users)
+      .where(eq(schema.users.id, session.user.id))
+      .limit(1);
+    onboardingStep = me?.onboardingStep ?? 5;
+  }
 
   let stats = { total: 0, new: 0, qualified: 0, disqualified: 0, contacted: 0 };
   let byEvent: { eventName: string | null; count: number }[] = [];
@@ -42,6 +53,8 @@ export default async function DashboardPage() {
   let roiStats = { totalEventCost: 0, totalPipeline: 0, expectedRevenue: 0, wonRevenue: 0, roiPercentage: null as number | null };
   let bestEvent: { name: string; roiPercentage: number } | null = null;
   let orchestratorStats = { workflowsRunning: 0, workflowsFailed: 0, agentSuccessRate: null as number | null, avgProcessingTimeMs: null as number | null };
+  let quickCaptureStats = { qrScans: 0, businessCardScans: 0, quickCaptureLeads: 0, manualEntryLeads: 0, avgCaptureSeconds: null as number | null };
+  let adoptionStats = { usersInvited: 0, usersActivated: 0, onboardingCompletionPct: 0, activeUsers: 0, inactiveUsers: 0 };
 
   if (session?.user?.tenantId) {
     const tenantId = session.user.tenantId;
@@ -55,6 +68,70 @@ export default async function DashboardPage() {
     for (const r of byStatus) {
       stats.total += r.count;
       if (r.status in stats) stats[r.status as keyof typeof stats] = r.count;
+    }
+
+    const bySource = await db
+      .select({ source: schema.leads.source, count: sql<number>`count(*)::int` })
+      .from(schema.leads)
+      .where(eq(schema.leads.tenantId, tenantId))
+      .groupBy(schema.leads.source);
+
+    for (const r of bySource) {
+      if (r.source === "qr_badge_scan" || r.source === "business_card") {
+        quickCaptureStats.quickCaptureLeads += r.count;
+      } else {
+        quickCaptureStats.manualEntryLeads += r.count;
+      }
+    }
+
+    const [{ qrScans }] = await db
+      .select({ qrScans: sql<number>`count(*)::int` })
+      .from(schema.leads)
+      .where(and(eq(schema.leads.tenantId, tenantId), sql`${schema.leads.qrScannedAt} is not null`));
+    quickCaptureStats.qrScans = qrScans;
+
+    const [{ businessCardScans }] = await db
+      .select({ businessCardScans: sql<number>`count(*)::int` })
+      .from(schema.businessCardImages)
+      .where(and(eq(schema.businessCardImages.tenantId, tenantId), isNull(schema.businessCardImages.deletedAt)));
+    quickCaptureStats.businessCardScans = businessCardScans;
+
+    const [{ avgCapture }] = await db
+      .select({ avgCapture: sql<number | null>`avg(${schema.leads.captureDurationSeconds})` })
+      .from(schema.leads)
+      .where(and(eq(schema.leads.tenantId, tenantId), sql`${schema.leads.captureDurationSeconds} is not null`));
+    quickCaptureStats.avgCaptureSeconds = avgCapture !== null ? Math.round(Number(avgCapture)) : null;
+
+    if (isTenantAdmin(session.user.role)) {
+      const [{ usersInvited }] = await db
+        .select({ usersInvited: sql<number>`count(*)::int` })
+        .from(schema.userInvitations)
+        .where(eq(schema.userInvitations.tenantId, tenantId));
+
+      const usersByStatus = await db
+        .select({ status: schema.users.status, count: sql<number>`count(*)::int` })
+        .from(schema.users)
+        .where(eq(schema.users.tenantId, tenantId))
+        .groupBy(schema.users.status);
+
+      for (const r of usersByStatus) {
+        if (r.status === "active") adoptionStats.activeUsers = r.count;
+        if (r.status === "inactive") adoptionStats.inactiveUsers = r.count;
+      }
+
+      const [{ usersActivated }] = await db
+        .select({ usersActivated: sql<number>`count(*)::int` })
+        .from(schema.userInvitations)
+        .where(and(eq(schema.userInvitations.tenantId, tenantId), eq(schema.userInvitations.status, "accepted")));
+
+      const [{ avgOnboarding }] = await db
+        .select({ avgOnboarding: sql<number | null>`avg(${schema.users.onboardingStep})` })
+        .from(schema.users)
+        .where(eq(schema.users.tenantId, tenantId));
+
+      adoptionStats.usersInvited = usersInvited;
+      adoptionStats.usersActivated = usersActivated;
+      adoptionStats.onboardingCompletionPct = avgOnboarding !== null ? Math.round((Number(avgOnboarding) / 5) * 100) : 0;
     }
 
     const eventRows = await db
@@ -366,6 +443,16 @@ export default async function DashboardPage() {
         </div>
       </div>
 
+      {onboardingStep < 5 && (
+        <Link
+          href="/welcome"
+          className="flex items-center justify-between gap-3 bg-[#0F4C81] text-white rounded-2xl px-5 py-3 hover:bg-[#0a3660] transition"
+        >
+          <span className="text-sm font-medium">Finish setting up your account — {Math.round((onboardingStep / 5) * 100)}% complete</span>
+          <span className="text-sm font-semibold whitespace-nowrap">Resume →</span>
+        </Link>
+      )}
+
       {/* Primary KPI row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <KpiCard icon={Users}       label="Total Leads"     value={stats.total}     color="blue"     href="/leads" />
@@ -402,6 +489,32 @@ export default async function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {/* Quick Capture Adoption row */}
+      <div>
+        <SectionHeader title="Quick Capture Adoption" icon={QrCode} href="/leads" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mt-3">
+          <KpiCard icon={QrCode}      label="QR Scans"            value={quickCaptureStats.qrScans}           color="blue"      href="/leads" />
+          <KpiCard icon={IdCard}      label="Business Card Scans" value={quickCaptureStats.businessCardScans} color="turquoise" href="/leads" />
+          <KpiCard icon={Zap}         label="Quick Capture Leads" value={quickCaptureStats.quickCaptureLeads} color="success"   href="/leads" />
+          <KpiCard icon={FileText}    label="Manual Entry Leads"  value={quickCaptureStats.manualEntryLeads}  color="warning"   href="/leads" />
+          <KpiCard icon={Timer}       label="Avg Capture Time"    value={quickCaptureStats.avgCaptureSeconds !== null ? `${quickCaptureStats.avgCaptureSeconds}s` : "n/a"} color="purple" href="/leads" />
+        </div>
+      </div>
+
+      {/* User Adoption row — tenant_admin+ only */}
+      {session?.user?.role && isTenantAdmin(session.user.role) && (
+        <div>
+          <SectionHeader title="User Adoption" icon={UserCheck} href="/admin/users" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mt-3">
+            <KpiCard icon={Mail}      label="Users Invited"           value={adoptionStats.usersInvited}        color="blue"      href="/admin/users" />
+            <KpiCard icon={UserCheck} label="Users Activated"         value={adoptionStats.usersActivated}      color="success"   href="/admin/users" />
+            <KpiCard icon={BarChart2} label="Onboarding Completion %" value={`${adoptionStats.onboardingCompletionPct}%`} color="turquoise" href="/admin/users" />
+            <KpiCard icon={CheckCircle} label="Active Users"          value={adoptionStats.activeUsers}         color="success"   href="/admin/users" />
+            <KpiCard icon={XCircle}    label="Inactive Users"         value={adoptionStats.inactiveUsers}       color="warning"   href="/admin/users" />
+          </div>
+        </div>
+      )}
 
       {/* Company Intelligence row */}
       <div>

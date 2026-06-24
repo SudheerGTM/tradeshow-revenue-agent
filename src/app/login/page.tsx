@@ -3,6 +3,7 @@
 import { useState, FormEvent } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Loader2 } from "lucide-react";
 
 export default function LoginPage() {
@@ -89,6 +90,10 @@ export default function LoginPage() {
               {loading ? "Signing in…" : "Sign in"}
             </button>
           </form>
+
+          <p className="text-center text-sm mt-5">
+            <Link href="/forgot-password" className="text-indigo-400 hover:text-indigo-300">Forgot password?</Link>
+          </p>
 
           <p className="text-center text-xs text-gray-500 mt-6">
             Demo credentials: <span className="text-gray-400">admin@demo.com / password</span>

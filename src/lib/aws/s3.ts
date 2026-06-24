@@ -10,6 +10,8 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 const REGION = process.env.AWS_REGION!;
 const BUCKET = process.env.AWS_S3_BUCKET!;
 const PREFIX = process.env.AWS_S3_AUDIO_PREFIX ?? "voice-notes";
+const BUSINESS_CARD_PREFIX = process.env.AWS_S3_BUSINESS_CARD_PREFIX ?? "business-cards";
+const AVATAR_PREFIX = process.env.AWS_S3_AVATAR_PREFIX ?? "avatars";
 
 // Singleton client — instantiated once per server process
 let _client: S3Client | null = null;
@@ -40,6 +42,27 @@ export function buildS3Key(params: {
 }): string {
   const ext = mimeToExt(params.fileType);
   return `${PREFIX}/${params.tenantId}/${params.eventId}/${params.leadId}/${params.voiceNoteId}.${ext}`;
+}
+
+/**
+ * Build a deterministic, tenant-scoped S3 key for a business card image.
+ * Pattern: business-cards/{tenantId}/{eventId}/{leadId}/{businessCardImageId}.{ext}
+ */
+export function buildBusinessCardS3Key(params: {
+  tenantId: string;
+  eventId: string;
+  leadId: string;
+  businessCardImageId: string;
+  fileType: string; // mime type e.g. "image/jpeg"
+}): string {
+  const ext = imageMimeToExt(params.fileType);
+  return `${BUSINESS_CARD_PREFIX}/${params.tenantId}/${params.eventId}/${params.leadId}/${params.businessCardImageId}.${ext}`;
+}
+
+/** Build a deterministic S3 key for a user avatar. Pattern: avatars/{userId}.{ext} */
+export function buildAvatarS3Key(userId: string, fileType: string): string {
+  const ext = imageMimeToExt(fileType);
+  return `${AVATAR_PREFIX}/${userId}.${ext}`;
 }
 
 /** Presigned PUT URL — valid for 10 minutes */
@@ -93,4 +116,14 @@ function mimeToExt(mime: string): string {
     "audio/ogg":   "ogg",
   };
   return map[mime] ?? "webm";
+}
+
+function imageMimeToExt(mime: string): string {
+  const map: Record<string, string> = {
+    "image/jpeg": "jpg",
+    "image/jpg":  "jpg",
+    "image/png":  "png",
+    "image/webp": "webp",
+  };
+  return map[mime] ?? "jpg";
 }

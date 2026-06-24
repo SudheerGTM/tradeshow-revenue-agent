@@ -44,5 +44,14 @@ export function roleBadge(role: string) {
 }
 
 export function statusBadge(status: string): Variant {
-  return status === "active" ? "green" : "red";
+  const map: Record<string, Variant> = {
+    active:    "green",
+    invited:   "blue",
+    inactive:  "gray",
+    suspended: "yellow",
+    locked:    "red",
+    expired:   "gray",
+    cancelled: "gray",
+  };
+  return map[status] ?? "red";
 }

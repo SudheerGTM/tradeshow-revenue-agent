@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
+import { getAccessibleEventIds } from "@/lib/event-access";
 import { db, schema } from "@/db";
-import { eq, and, ilike, or, desc, sql } from "drizzle-orm";
+import { eq, and, ilike, or, desc, sql, inArray, isNull } from "drizzle-orm";
 import type { LeadSource } from "@/db/schema";
 
-// GET /api/leads — tenant-scoped; booth_user sees only their own
+// GET /api/leads — tenant-scoped; booth_user sees only their own; event-access-scoped if restricted
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -27,6 +28,21 @@ export async function GET(req: NextRequest) {
   if (session.user.role === "booth_user") {
     conditions.push(eq(schema.leads.createdByUserId, session.user.id!));
   }
+
+  const [me] = await db
+    .select({ allEvents: schema.users.allEvents })
+    .from(schema.users)
+    .where(eq(schema.users.id, session.user.id!))
+    .limit(1);
+  const accessibleEventIds = await getAccessibleEventIds(session.user.id!, me?.allEvents ?? true);
+  if (accessibleEventIds !== null) {
+    conditions.push(
+      accessibleEventIds.length
+        ? or(isNull(schema.leads.eventId), inArray(schema.leads.eventId, accessibleEventIds))!
+        : isNull(schema.leads.eventId)
+    );
+  }
+
   if (status) conditions.push(eq(schema.leads.status, status as typeof schema.leads.$inferSelect["status"]));
   if (eventId) conditions.push(eq(schema.leads.eventId, eventId));
   if (search) {
@@ -109,18 +125,31 @@ export async function POST(req: NextRequest) {
   const {
     firstName, lastName, jobTitle, companyName,
     email, phone, country, source, notes, eventId,
-    consentGiven,
+    consentGiven, qrRawText, qrScannedAt, captureDurationSeconds,
   } = body as {
     firstName: string; lastName?: string; jobTitle?: string; companyName: string;
     email?: string; phone?: string; country?: string;
     source?: LeadSource; notes?: string; eventId?: string;
-    consentGiven?: boolean;
+    consentGiven?: boolean; qrRawText?: string; qrScannedAt?: string;
+    captureDurationSeconds?: number;
   };
 
   if (!firstName) return NextResponse.json({ error: "first_name required" }, { status: 400 });
   if (!companyName) return NextResponse.json({ error: "company_name required" }, { status: 400 });
   if (!email && !phone) return NextResponse.json({ error: "email or phone required" }, { status: 400 });
   if (!consentGiven) return NextResponse.json({ error: "consent required" }, { status: 400 });
+
+  if (eventId) {
+    const [me] = await db
+      .select({ allEvents: schema.users.allEvents })
+      .from(schema.users)
+      .where(eq(schema.users.id, session.user.id!))
+      .limit(1);
+    const accessibleEventIds = await getAccessibleEventIds(session.user.id!, me?.allEvents ?? true);
+    if (accessibleEventIds !== null && !accessibleEventIds.includes(eventId)) {
+      return NextResponse.json({ error: "You do not have access to this event" }, { status: 403 });
+    }
+  }
 
   const [lead] = await db
     .insert(schema.leads)
@@ -134,13 +163,21 @@ export async function POST(req: NextRequest) {
       consentGiven: !!consentGiven,
       consentTimestamp: consentGiven ? new Date() : null,
       notes,
+      qrRawText: qrRawText ?? null,
+      qrScannedAt: qrScannedAt ? new Date(qrScannedAt) : null,
+      captureDurationSeconds: captureDurationSeconds ?? null,
     })
     .returning();
+
+  const creationAction =
+    source === "qr_badge_scan" ? "lead_created_from_qr" :
+    source === "business_card" ? "lead_created_from_business_card" :
+    "lead.created";
 
   await logAudit({
     tenantId,
     userId: session.user.id,
-    action: "lead.created",
+    action: creationAction,
     resourceType: "lead",
     resourceId: lead.id,
     metadata: { firstName, lastName, companyName, source: source ?? "manual" },

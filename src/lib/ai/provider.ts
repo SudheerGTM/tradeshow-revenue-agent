@@ -158,3 +158,85 @@ function toStringArray(v: unknown): string[] {
 function toString(v: unknown): string {
   return typeof v === "string" ? v : "";
 }
+
+// ─── Business Card OCR ──────────────────────────────────────────────────────
+
+export interface BusinessCardFields {
+  firstName: string;
+  lastName: string;
+  jobTitle: string;
+  companyName: string;
+  email: string;
+  phone: string;
+  country: string;
+}
+
+const BUSINESS_CARD_SYSTEM_PROMPT = `You are an OCR assistant extracting contact details from a photo of a business card.
+
+You must return ONLY valid JSON matching this exact schema — no markdown, no explanation, no code fences:
+
+{
+  "firstName": "string, or empty string if not legible",
+  "lastName": "string, or empty string if not legible",
+  "jobTitle": "string, or empty string if not present",
+  "companyName": "string, or empty string if not legible",
+  "email": "string, or empty string if not present",
+  "phone": "string, or empty string if not present",
+  "country": "string, or empty string if not inferable"
+}
+
+Rules:
+- Do not invent information that is not visibly printed on the card.
+- All fields are strings — never null, never omitted.`;
+
+export async function extractBusinessCard(
+  imageBase64: string,
+  mimeType: string
+): Promise<{ fields: BusinessCardFields; rawText: string }> {
+  const provider = process.env.AI_PROVIDER ?? "gemini";
+  if (provider !== "gemini") {
+    throw new Error(`Unsupported AI provider: ${provider}. Set AI_PROVIDER=gemini in .env.local`);
+  }
+
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error("GEMINI_API_KEY is not set");
+
+  const modelName = process.env.GEMINI_MODEL ?? "gemini-2.5-flash";
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const model = genAI.getGenerativeModel({
+    model: modelName,
+    generationConfig: { responseMimeType: "application/json" },
+  });
+
+  const response = await model.generateContent([
+    { text: BUSINESS_CARD_SYSTEM_PROMPT },
+    { inlineData: { data: imageBase64, mimeType } },
+  ]);
+
+  const rawText = response.response.text();
+  let parsed: unknown;
+
+  try {
+    const cleaned = rawText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+    parsed = JSON.parse(cleaned);
+  } catch {
+    throw new Error(`OCR returned invalid JSON: ${rawText.slice(0, 200)}`);
+  }
+
+  if (typeof parsed !== "object" || parsed === null) {
+    throw new Error("OCR response is not a JSON object");
+  }
+
+  const r = parsed as Record<string, unknown>;
+  const fields: BusinessCardFields = {
+    firstName:   toString(r.firstName),
+    lastName:    toString(r.lastName),
+    jobTitle:    toString(r.jobTitle),
+    companyName: toString(r.companyName),
+    email:       toString(r.email),
+    phone:       toString(r.phone),
+    country:     toString(r.country),
+  };
+
+  return { fields, rawText };
+}

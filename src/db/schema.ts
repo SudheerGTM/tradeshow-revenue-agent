@@ -23,7 +23,19 @@ export const userRoleEnum = pgEnum("user_role", [
   "manager",
   "booth_user",
 ]);
-export const userStatusEnum = pgEnum("user_status", ["active", "inactive"]);
+export const userStatusEnum = pgEnum("user_status", [
+  "active",
+  "inactive",
+  "invited",
+  "suspended",
+  "locked",
+]);
+export const invitationStatusEnum = pgEnum("invitation_status", [
+  "pending",
+  "accepted",
+  "expired",
+  "cancelled",
+]);
 
 // ─── Tenants ─────────────────────────────────────────────────────────────────
 
@@ -50,10 +62,88 @@ export const users = pgTable(
     passwordHash: text("password_hash").notNull(),
     role: userRoleEnum("role").notNull().default("booth_user"),
     status: userStatusEnum("status").notNull().default("active"),
+
+    failedLoginAttempts: integer("failed_login_attempts").notNull().default(0),
+    lockedAt: timestamp("locked_at", { withTimezone: true }),
+    lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
+    lastActivityAt: timestamp("last_activity_at", { withTimezone: true }),
+    sessionCount: integer("session_count").notNull().default(0),
+    avatarUrl: text("avatar_url"),
+    allEvents: boolean("all_events").notNull().default(true),
+    onboardingStep: integer("onboarding_step").notNull().default(0),
+    onboardingCompletedAt: timestamp("onboarding_completed_at", { withTimezone: true }),
+
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("users_tenant_idx").on(t.tenantId)]
+);
+
+// ─── Password History ──────────────────────────────────────────────────────────
+
+export const passwordHistory = pgTable(
+  "password_history",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    passwordHash: text("password_hash").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("ph_user_idx").on(t.userId)]
+);
+
+// ─── User Invitations ───────────────────────────────────────────────────────────
+
+export const userInvitations = pgTable(
+  "user_invitations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+    email: varchar("email", { length: 255 }).notNull(),
+    firstName: varchar("first_name", { length: 100 }).notNull(),
+    lastName: varchar("last_name", { length: 100 }),
+    role: userRoleEnum("role").notNull().default("booth_user"),
+    eventAccess: jsonb("event_access"), // "all" | string[] of event ids
+    message: text("message"),
+    invitationToken: varchar("invitation_token", { length: 128 }).notNull().unique(),
+    status: invitationStatusEnum("status").notNull().default("pending"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+    invitedBy: uuid("invited_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("ui_tenant_idx").on(t.tenantId),
+    index("ui_email_idx").on(t.email),
+    index("ui_status_idx").on(t.tenantId, t.status),
+  ]
+);
+
+// ─── User Event Access ──────────────────────────────────────────────────────────
+
+export const userEventAccess = pgTable(
+  "user_event_access",
+  {
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    eventId: uuid("event_id").notNull().references(() => events.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("uea_user_idx").on(t.userId)]
+);
+
+// ─── Password Reset Tokens ──────────────────────────────────────────────────────
+
+export const passwordResetTokens = pgTable(
+  "password_reset_tokens",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    token: varchar("token", { length: 128 }).notNull().unique(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    usedAt: timestamp("used_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("prt_user_idx").on(t.userId)]
 );
 
 // ─── Audit Logs ───────────────────────────────────────────────────────────────
@@ -68,6 +158,7 @@ export const auditLogs = pgTable(
     resourceType: varchar("resource_type", { length: 100 }).notNull(),
     resourceId: varchar("resource_id", { length: 255 }),
     metadata: jsonb("metadata"),
+    ipAddress: varchar("ip_address", { length: 64 }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
@@ -102,7 +193,7 @@ export const events = pgTable(
 
 // ─── Leads ────────────────────────────────────────────────────────────────────
 
-export const leadSourceEnum = pgEnum("lead_source", ["manual", "qr_form", "business_card"]);
+export const leadSourceEnum = pgEnum("lead_source", ["manual", "qr_form", "business_card", "qr_badge_scan"]);
 export const leadStatusEnum = pgEnum("lead_status", ["new", "contacted", "qualified", "disqualified"]);
 
 export const leads = pgTable(
@@ -128,6 +219,10 @@ export const leads = pgTable(
 
     status: leadStatusEnum("status").notNull().default("new"),
     notes: text("notes"),
+
+    qrRawText: text("qr_raw_text"),
+    qrScannedAt: timestamp("qr_scanned_at", { withTimezone: true }),
+    captureDurationSeconds: integer("capture_duration_seconds"),
 
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -179,6 +274,53 @@ export const voiceNotes = pgTable(
     index("vn_tenant_idx").on(t.tenantId),
     index("vn_lead_idx").on(t.leadId),
     index("vn_status_idx").on(t.tenantId, t.recordingStatus),
+  ]
+);
+
+// ─── Business Card Images ───────────────────────────────────────────────────────
+
+export const ocrStatusEnum = pgEnum("ocr_status", [
+  "not_started", "pending", "completed", "failed",
+]);
+
+export const ocrReviewStatusEnum = pgEnum("ocr_review_status", [
+  "pending_review", "reviewed", "rejected",
+]);
+
+export const businessCardImages = pgTable(
+  "business_card_images",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+    eventId: uuid("event_id").references(() => events.id, { onDelete: "set null" }),
+    leadId: uuid("lead_id").notNull().references(() => leads.id, { onDelete: "cascade" }),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+
+    s3Bucket: varchar("s3_bucket", { length: 255 }).notNull(),
+    s3Key: varchar("s3_key", { length: 1000 }).notNull(),
+    fileName: varchar("file_name", { length: 255 }).notNull(),
+    fileType: varchar("file_type", { length: 100 }).notNull(),
+    fileSizeBytes: text("file_size_bytes"),
+
+    uploadStatus: recordingStatusEnum("upload_status").notNull().default("pending_upload"),
+    ocrStatus: ocrStatusEnum("ocr_status").notNull().default("not_started"),
+    ocrReviewStatus: ocrReviewStatusEnum("ocr_review_status").notNull().default("pending_review"),
+    ocrRawText: text("ocr_raw_text"),
+    extractedFieldsJson: text("extracted_fields_json"),
+
+    cardConsentConfirmed: boolean("card_consent_confirmed").notNull().default(false),
+    cardConsentTimestamp: timestamp("card_consent_timestamp", { withTimezone: true }),
+
+    retentionDeleteAt: timestamp("retention_delete_at", { withTimezone: true }),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("bci_tenant_idx").on(t.tenantId),
+    index("bci_lead_idx").on(t.leadId),
+    index("bci_status_idx").on(t.tenantId, t.uploadStatus),
   ]
 );
 
@@ -780,6 +922,13 @@ export type Tenant = typeof tenants.$inferSelect;
 export type NewTenant = typeof tenants.$inferInsert;
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
+export type UserStatus = "active" | "inactive" | "invited" | "suspended" | "locked";
+export type PasswordHistoryRow = typeof passwordHistory.$inferSelect;
+export type UserInvitation = typeof userInvitations.$inferSelect;
+export type NewUserInvitation = typeof userInvitations.$inferInsert;
+export type InvitationStatus = "pending" | "accepted" | "expired" | "cancelled";
+export type UserEventAccessRow = typeof userEventAccess.$inferSelect;
+export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
 export type AuditLog = typeof auditLogs.$inferSelect;
 export type Event = typeof events.$inferSelect;
 export type NewEvent = typeof events.$inferInsert;
@@ -787,10 +936,14 @@ export type Lead = typeof leads.$inferSelect;
 export type NewLead = typeof leads.$inferInsert;
 export type UserRole = "platform_admin" | "tenant_admin" | "manager" | "booth_user";
 export type LeadStatus = "new" | "contacted" | "qualified" | "disqualified";
-export type LeadSource = "manual" | "qr_form" | "business_card";
+export type LeadSource = "manual" | "qr_form" | "business_card" | "qr_badge_scan";
 export type VoiceNote = typeof voiceNotes.$inferSelect;
 export type NewVoiceNote = typeof voiceNotes.$inferInsert;
 export type RecordingStatus = "pending_upload" | "uploaded" | "failed" | "deleted";
+export type BusinessCardImage = typeof businessCardImages.$inferSelect;
+export type NewBusinessCardImage = typeof businessCardImages.$inferInsert;
+export type OcrStatus = "not_started" | "pending" | "completed" | "failed";
+export type OcrReviewStatus = "pending_review" | "reviewed" | "rejected";
 export type TranscriptionStatus = "not_started" | "pending" | "completed" | "failed";
 export type Transcript = typeof transcripts.$inferSelect;
 export type NewTranscript = typeof transcripts.$inferInsert;
