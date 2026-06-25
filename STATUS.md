@@ -1,119 +1,69 @@
 # Trade Show Revenue Agent — Project Status
 
-> Handoff doc for picking up this project in a new session. Point Claude at this file first. This is a status snapshot, not auto-loaded project instructions — `CLAUDE.md` (which just includes `AGENTS.md`, a Next.js version warning) is unaffected.
+> Handoff doc for picking up this project in a new session. **Read `/docs/README.md` first** — there's now a full engineering documentation suite that's the primary source of truth for architecture, schema, API, agents, auth, deployment, known limitations, etc. This file is just the operational "what's live right now and what's unresolved" snapshot on top of that.
 
-Last updated: 2026-06-24, after Release 13 + the IAM/password-reset merge described below.
+Last updated: 2026-06-25.
 
-## ⚠️ Recent: merged in a parallel worktree's IAM work
+## Current state — read this first
 
-A sibling worktree (`.claude/worktrees/sharp-mahavira-d7d16a`, branch `claude/sharp-mahavira-d7d16a`) had — uncommitted — already built a full identity/access-management overhaul (token-based invitations, email-based password reset, account lockout, password history, per-user event access, business card scanning, QR badge scanning, duplicate-lead detection) that this worktree didn't know about. Both worktrees shared the same local Postgres database, so this could have silently corrupted shared state. Per user direction, that worktree's commit (`6ab19aa`, Docker/production support) was cherry-picked and its uncommitted working-tree changes were copied file-for-file into this worktree, which is now the single source of truth. **The `sharp-mahavira-d7d16a` worktree is now stale — its work has been absorbed here. Don't develop in it further; it should be removed once you've confirmed nothing else in it is needed.**
-
-On top of that merge, the specific P1 fix (admin "Reset Password" was generating and flashing a temporary password instead of emailing a reset link) was finished here:
-- Added `POST /api/users/:id/reset-password` (admin-initiated, emails a secure link, audit action `password_reset_requested`)
-- Removed the `password` field entirely from `PATCH /api/users/:id` — there is no longer any code path where an admin can directly set/see a user's password
-- Fixed `invitation_resent` / `invitation_cancelled` audit action names (the merged code logged `user_invited` with a `resend: true` flag, and didn't log cancellation at all)
-- Fixed invitation status badges to read "Pending / Accepted / Expired / Cancelled" (was showing "Invited" / raw enum values)
-- Fixed a stale `NEXTAUTH_URL` (`:3001`) that made every emailed link point at the wrong port
-- Added `EMAIL_PROVIDER=console` to `.env.local` (defaults to logging emails to the server console — nothing is actually sent until you set `EMAIL_PROVIDER=ses` and verify a sender identity in the AWS SES console for the `AWS_REGION` already in use)
-
-None of this is committed yet — review before committing, since it touches auth, schema, and the admin Users page.
+- **Production is live and healthy:** https://tradeshow-agent.gtmtechsol.ai (returns 200). EC2 instance `i-0ddfdeaef544e8bdd` (3.73.2.52, eu-central-1), container `tradeshow-agent:wf`, up 18h+, memory/swap healthy (2GB swap was added after an earlier OOM incident — see `docs/16-troubleshooting.md`).
+- **RDS endpoint:** `tradeshow-agent-prod.cnec08ekae5z.eu-central-1.rds.amazonaws.com`. SSH key: `~/.ssh/tradeshow-agent-key.pem`. These were previously cached in `/tmp/*.txt` files that have since been cleared by a reboot/cleanup — don't rely on `/tmp` persisting across sessions; re-derive via `aws ec2 describe-instances`/`aws rds describe-db-instances` if needed (filters/identifiers above).
+- **`/docs` exists and is committed** (commit `4aee90d`, pushed to `main`). It documents the codebase as of Release 13.6. Treat it as authoritative over this file and over any prior chat history.
+- **⚠️ Unresolved: production's deployed code may not exactly match `main`'s current `d0fcd51` commit for the IAM/password-reset feature.** Production was deployed from a Docker image (`tradeshow-agent:wf`) built off a worktree branch before that branch's IAM work was reconciled and merged into `main` as `d0fcd51` (which has the *safer* design — admin resets always go through an emailed link, `PATCH /api/users/:id` never accepts a raw password). The `:wf` image predates that reconciliation. **Before doing more IAM work, diff what's actually running in the container against `main` and redeploy if they've diverged** — see `docs/09-deployment-guide.md` for the deploy procedure.
+- **Two unrelated local-only changes sit uncommitted:** `.claude/launch.json`, `src/components/VoiceRecorder.tsx`. Not part of any doc/IAM work — ask the user before committing or discarding them, they may be intentional in-progress edits.
 
 ## What this is
 
-A multi-tenant SaaS for logistics/trade-show exhibitors: capture leads on the show floor, run them through a chain of AI agents (conversation intelligence → enrichment → scoring → follow-up drafts → CRM sync → ROI attribution), and report on event ROI. Next.js 16 (App Router) + TypeScript + PostgreSQL (Drizzle ORM) + Firebase-free, NextAuth v5 (JWT) for auth.
+A multi-tenant SaaS for trade-show exhibitors: capture leads on the show floor (manual, QR badge scan, business-card OCR, voice notes), run them through a chain of AI agents (conversation intelligence → enrichment → scoring → follow-up drafts → CRM sync → ROI attribution), and report on event ROI. Full IAM layer (invitations, password reset, lockout, per-user event access) as of Release 13.6. Next.js 16 (App Router) + TypeScript + PostgreSQL (Drizzle ORM) + NextAuth v5 (JWT).
 
-GitHub: `SudheerGTM/tradeshow-revenue-agent`, branch `main`. All 13 releases below are committed and pushed.
+GitHub: `SudheerGTM/tradeshow-revenue-agent`, branch `main`, currently at commit `4aee90d`.
 
-## Running it
+## Running it locally
 
 ```sh
 # Postgres must be started manually with UTF-8 locale, on port 5433 (not default 5432 —
-# something else on this machine already owns 5432)
+# a brew-services-managed instance on this machine tends to auto-grab 5432 using the
+# SAME data directory; stop it first if pg_ctl complains about an existing lock file)
+brew services stop postgresql@16   # only if it auto-started on 5432
 LC_ALL="en_US.UTF-8" /opt/homebrew/opt/postgresql@16/bin/pg_ctl -D /opt/homebrew/var/postgresql@16 -o "-p 5433" -l /tmp/pg16.log start
 
-npm run dev      # localhost:3000
-npm run build    # type-check + build (use this to verify changes — no separate type-check script)
+npm install
+npm run dev      # localhost:3000 (or :3001 if :3000 is taken)
+npm run build    # type-check + build — use this to verify changes, no separate typecheck script
 npm run lint
 ```
 
-Seeded test users (`Password123!` for all):
+Seeded test users (`Password123!` for all): `admin@platform.com` (platform_admin), `admin@demo.com` (tenant_admin), `manager@demo.com` (manager), `booth@demo.com` (booth_user).
 
-| Email | Role |
-|---|---|
-| `admin@platform.com` | platform_admin |
-| `admin@demo.com` | tenant_admin |
-| `manager@demo.com` | manager |
-| `booth@demo.com` | booth_user |
+`.env.local` is gitignored — see `docs/12-environment-variables.md` for the full table. Notable gaps confirmed during the last session: `HUBSPOT_PIPELINE_ID`/`HUBSPOT_STAGE_ID` were empty — verify before assuming CRM sync works end-to-end. AWS Transcribe is configured but the AWS account isn't subscribed to the service (account-level gap, not a code bug). AWS SES is in sandbox mode — only `info@gtmtechsol.com` can receive real email until AWS approves the pending production-access request.
 
-`.env.local` is gitignored, already has real keys for: Apollo, Gemini (`gemini-2.5-flash` — older model names 404), AWS S3 (voice notes, `eu-central-1`), HubSpot (token now present — was missing earlier in the project, since added). AWS Transcribe is *configured* but the AWS account itself isn't subscribed to the service (`SubscriptionRequiredException`) — that's an AWS account issue, not a code bug, and is surfaced honestly as "Needs Attention" in the Integrations card rather than papered over.
+## Release history
 
-## Release history (all shipped, in order)
-
-| # | What it added |
-|---|---|
-| R1–R5 | Scaffold, tenant/user management + RBAC, lead capture, voice capture, transcription framework |
-| R6 | Conversation Intelligence (Gemini) |
-| R7 | Apollo company/contact enrichment |
-| R8 | Lead Scoring — deterministic 100-pt model (Company Fit/Authority/Need/Urgency/Engagement/Data Quality), AI explains only, never sets the score |
-| R9 | Follow-Up Intelligence — drafts only, human approval required, never sends |
-| R10 | HubSpot CRM Sync — prepare → approve → sync, never automatic |
-| R11 | Opportunity & Pipeline — Kanban board, stage-based probabilities |
-| R12 | ROI Analytics — event cost tracking, ROI%, AI executive summary (summarizes only, never computes numbers), PDF/Excel export |
-| R13 | **Agent Orchestrator** — chains all 6 agents into one "Lead Qualification Workflow," adapter pattern for future AWS Step Functions/Bedrock AgentCore swap, retry logic, policy engine, event bus |
-| — | Full GTMTechSol UI redesign (Revenue Blue `#0F4C81` / AI Turquoise `#00B8D9`) |
-| — | Mobile/tablet/desktop responsive pass — **important structural fix**: had to move every page from `src/app/*` into a `src/app/(app)/*` route group because the shared sidebar/topbar layout only ever applied to `/dashboard` before that (Next.js layouts only wrap routes nested under them) |
-| — | Admin UX Phase 1 + 2 — Tenant Settings (Team Performance, Current Event, Tenant Health score, Integrations, Recent Activity, Subscription placeholder) and Users page (KPIs, role badges, Invite User flow, performance drawer) |
-
-## Architecture map
-
-```
-src/app/(app)/...          all authenticated pages (route group — see note above)
-src/app/api/...            API routes
-src/app/login, src/app/capture/[tenant]/[event]   public, NOT in the (app) group
-
-src/lib/agents/            one file per agent's core logic (scoreLead, generateFollowup,
-                            prepareCRMRecord, recalculateAndStoreROI, enrichLead wrappers,
-                            conversation-agent wrapper) — each exports a callable function
-                            used both by its own API route AND by the orchestrator
-src/lib/orchestrator/      types.ts (AgentAdapter interface — the AWS migration seam),
-                            agents.ts (concrete adapters wrapping the agents/ functions),
-                            orchestrator.ts (startWorkflow/retryStep/cancelWorkflow/etc.),
-                            event-bus.ts, policies.ts
-src/lib/integrations/      hubspot.ts (server-side only, never reaches browser)
-src/lib/enrichment/        apollo.ts
-src/lib/ai/                provider.ts (Gemini wrapper)
-
-src/components/lead-detail/   the 11-tab Lead Details workspace (Overview, Conversation,
-                               Company, Scoring, Follow-Up, Opportunity, Activity, Voice,
-                               CRM, ROI, Workflow)
-src/components/admin/         Tenant Settings / Users page building blocks
-src/components/workflow/      shared step-list UI for /workflows and the lead-detail tab
-
-drizzle/000N_*.sql         migrations 1–12, applied directly via psql (no migration runner
-                            wired up — run each .sql file by hand against the local DB)
-```
+See `docs/18-release-history.md` and `docs/CHANGELOG.md` for full detail. Short version: R1–R12 built the core lead pipeline (capture → enrichment → scoring → follow-up → CRM sync → ROI), R13 added the Agent Orchestrator, R13.5 added Quick Capture (QR badge scan + business card OCR), R13.6 added the full IAM overhaul (invitations, password reset, lockout, event access scoping). Currently at **13.6**, deployed.
 
 ## Guardrails that matter (don't relax these without being asked)
 
-- **CRM sync never happens automatically.** Every code path — manual UI, orchestrator step — only ever calls `prepareCRMRecord()` and inserts a `pending_approval` row. Actual HubSpot writes only happen via the approve endpoint, gated to manager/tenant_admin.
-- **AI never sets a number.** Lead score, ROI %, revenue figures are all computed in deterministic SQL/TS. AI only explains, drafts, or summarizes.
-- **Follow-up drafts are never sent.** No email-sending system exists by design.
-- **Tenant isolation** on every query; `booth_user` is generally restricted to leads/workflows/syncs they created.
+- **CRM sync never happens automatically** — prepare → human approval → sync, always.
+- **AI never sets a number** — lead score, ROI%, revenue are deterministic SQL/TS; AI only explains/drafts/summarizes.
+- **Follow-up drafts are never sent** — no send capability exists anywhere.
+- **No raw password code path** — admin password resets go through an emailed single-use link, same as self-service; `PATCH /api/users/:id` does not accept a password field on `main` (verify production matches — see the unresolved item above).
+- **Tenant isolation** on every query; `booth_user` restricted to records they created.
+
+Full detail in `docs/07-authentication-security.md` and `docs/08-multi-tenant-architecture.md`.
 
 ## Known issues / things to watch
 
-1. **`session.user.id` can be `null` for some seeded sessions** — hit this as a real bug in R13 (orchestrator coerced it to `""`, which crashed an audit-log insert because `""` isn't a valid UUID). Fixed by widening `scoreLead`/`generateFollowup` signatures to accept `string | null`. If you add new code that takes a `userId`, default to `string | null`, not `string`.
-2. **Apollo's `/people/search` endpoint is deprecated** — fixed in `src/lib/enrichment/apollo.ts` to use `/mixed_people/api_search` (returns obfuscated data) + `/people/match` (reveals it). If contact enrichment starts silently failing again, check this first.
-3. **No migration runner** — migrations are plain `.sql` files applied by hand. If you add a new table, write `drizzle/0013_*.sql` and run it with `psql` yourself; nothing automates this.
-4. **Postgres on port 5433, not 5432** — something else on this machine holds 5432. Always pass `-o "-p 5433"` when starting it manually, and always `LC_ALL="en_US.UTF-8"` or the cluster won't start.
+See `docs/16-troubleshooting.md` for the full list with fixes. Highlights:
+1. **`session.user.id` null bug** — was silently writing `NULL` to `created_by_user_id`/audit `userId` everywhere; fixed by adding `token.id`/`session.user.id` wiring in `src/lib/auth.ts`'s callbacks. Check this first if attribution ever looks wrong again.
+2. **No migration runner** — `drizzle/*.sql` applied by hand, in order, to every environment separately. A branch once drifted a full release behind `main` because of this — always check `git log` against `main` before assuming a feature doesn't exist.
+3. **Dashboard N+1 query bug** (`src/app/(app)/dashboard/page.tsx`) — ROI recalculation loops sequentially per event; High severity, not yet fixed. See `docs/code-inspection-report.md`.
+4. **EC2 build-time OOM risk** — t3.small has only 2GB RAM; a 2GB swapfile was added specifically to prevent builds from hanging the instance. If a deploy ever makes SSH unresponsive, the instance is usually still alive — reboot via `aws ec2 reboot-instances`, don't assume it's dead.
+5. **Postgres port 5433, not 5432** — see above.
 
 ## What's NOT built (explicitly out of scope so far)
 
-- Email sending (anywhere)
-- Real AWS Step Functions / Bedrock AgentCore integration (R13 only built the adapter seam for this)
-- Policy management UI (policies are seeded directly in `agent_policies`, read-only API exists, no edit UI)
-- Subscription/billing backend (Settings page has a clearly-labeled placeholder card only)
+Email sending to leads (by design), real AWS Step Functions/Bedrock AgentCore swap (adapter seam exists, not implemented), policy management UI, subscription/billing backend, SSO/MFA/SCIM (interfaces shaped for it, not implemented). Full list in `docs/19-known-limitations.md`.
 
 ## Natural next step
 
-Release 13's stated target: "Release 14 will introduce..." was never specified by the user — ask before assuming what's next. The orchestrator is explicitly designed so the next move (real Step Functions/EventBridge/Bedrock AgentCore swap) only requires writing new `AgentAdapter` implementations, not touching the engine, schema, or UI.
+No committed Release 14 scope exists — ask before assuming what's next. Reasonable candidates per `docs/17-future-roadmap.md`: fix the dashboard N+1 query (quick, high-value), add a real migration runner, or start the Step Functions/Bedrock orchestrator swap using the existing `AgentAdapter` seam. Resolve the production-vs-main IAM code discrepancy noted above before building further on top of user management.
