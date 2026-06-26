@@ -20,10 +20,12 @@ function getClient(): S3Client {
   if (!_client) {
     _client = new S3Client({
       region: REGION,
-      credentials: {
-        accessKeyId:     process.env.AWS_ACCESS_KEY_ID!,
-        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
-      },
+      credentials: process.env.AWS_ACCESS_KEY_ID
+        ? {
+            accessKeyId:     process.env.AWS_ACCESS_KEY_ID!,
+            secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+          }
+        : undefined, // falls back to the instance role when not set (production)
     });
   }
   return _client;
