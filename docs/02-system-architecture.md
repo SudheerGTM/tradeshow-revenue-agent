@@ -88,3 +88,5 @@ See [10-aws-infrastructure.md](10-aws-infrastructure.md) for the full breakdown 
 ## Multi-tenancy
 
 Every business table carries a `tenant_id` and every query is scoped to the caller's tenant except `platform_admin`-only routes. See [08-multi-tenant-architecture.md](08-multi-tenant-architecture.md).
+
+Tenant resolution by subdomain (e.g. `demo.tradeshow-agent.gtmtechsol.ai`) is implemented at the `src/proxy.ts` layer (this fork's `middleware.ts` equivalent — see root `AGENTS.md`) and enforced in `authorize()` (`src/lib/auth.ts`). The apex domain remains tenant-agnostic (legacy behavior) until wildcard DNS is enabled — see [08-multi-tenant-architecture.md](08-multi-tenant-architecture.md)'s "Subdomain strategy" section for the apex-vs-subdomain distinction, and `docs/deployment-checklist.md` for the prepared (not yet executed) rollout plan.

@@ -54,17 +54,25 @@ Login is currently scoped by **email uniqueness alone**, globally across all ten
 
 This isn't a data leak by itself (the user only ever sees their own tenant's data after login, since every downstream query filters by `session.user.tenantId` — confirmed in `docs/security-review.md`'s tenant-isolation spot check), but it is **misleading and not true tenant-scoped authentication**: a user could log into `demo.tradeshow-agent.gtmtechsol.ai` with `alpi` tenant credentials and land in the `alpi` dashboard while the URL still says `demo`. That breaks the "Lookup user inside demo tenant" expectation in the brief, and would confuse support/audit trails (which subdomain was actually used vs which tenant was actually accessed).
 
-### Recommended fix (not yet implemented)
+### Update (2026-06-27): implemented, deployed, and verified
 
-In `authorize()`, read the tenant slug from the request (NextAuth v5's `authorize` receives the request object as a second argument in `Credentials` providers) and add a tenant filter:
+The fix described below has since been implemented in `src/lib/auth.ts`, deployed to production, and verified — see `docs/08-multi-tenant-architecture.md`'s "Subdomain strategy" section for the final design and `docs/deployment-checklist.md` for the rollout record. Two things changed from the original plan during implementation, both caught by testing before being considered done:
+
+1. **`resolveTenantSlug()` itself had a bug** that the original plan didn't anticipate: its label-counting heuristic treated the apex domain (`tradeshow-agent.gtmtechsol.ai`, itself 3 labels) as a tenant subdomain, resolving to a fake slug. Fixed to compare against the actual root domain — apex/localhost now correctly resolve to `null` (no tenant context, preserving legacy login), only real subdomains resolve to a label.
+2. **Wrong column initially used for the lookup**: the `tenants` table has both a `slug` column (e.g. `"demo-logistics"`, used elsewhere as a general identifier) and a separate `subdomain` column (e.g. `"demo"`) — the one actually intended for subdomain routing. The first implementation pass used `getTenantBySlug()`, which would have made the literal example used throughout this review (`demo.tradeshow-agent.gtmtechsol.ai`) fail with `tenant_not_found`, since no tenant has `slug = "demo"`. Added `getTenantBySubdomain()` and switched to it before deploying.
+
+Final implementation, for reference:
 
 ```ts
 async authorize(credentials, request) {
-  const hostname = request?.headers.get("host") ?? "";
-  const slug = resolveTenantSlug(hostname);
-  const tenant = await getTenantBySlug(slug);
-  // ...
-  .where(and(eq(schema.users.email, credentials.email as string), eq(schema.users.tenantId, tenant?.id)))
+  const hostname = request.headers.get("host") ?? "";
+  const slug = resolveTenantSlug(hostname);              // null on apex/localhost
+  const tenant = slug ? await getTenantBySubdomain(slug) : null;
+  if (slug && !tenant) throw new TenantNotFoundError();   // code: "tenant_not_found"
+  // ...user lookup by email...
+  if (tenant && user.role !== "platform_admin" && user.tenantId !== tenant.id) {
+    return null; // valid credentials, wrong tenant — generic invalid-credentials error
+  }
 ```
 
 This is a small, well-contained change — but it is a **behavior change to the authentication flow**, which is explicitly out of scope for this review-only pass. Flagging it here as the top blocker to resolve before (or immediately after, with a tight rollout window) enabling wildcard DNS publicly.
