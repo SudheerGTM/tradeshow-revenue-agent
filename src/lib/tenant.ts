@@ -38,6 +38,20 @@ export async function getTenantBySlug(slug: string): Promise<TenantContext | nul
   return rows[0] ?? null;
 }
 
+// tenants.subdomain is the column intended for {subdomain}.domain-style
+// routing (see docs/08-multi-tenant-architecture.md) — distinct from
+// tenants.slug, which is a separate identifier used elsewhere (e.g. URLs in
+// the admin UI). resolveTenantSlug() returns a value parsed from the Host
+// header, so it must be looked up against `subdomain`, not `slug`.
+export async function getTenantBySubdomain(subdomain: string): Promise<TenantContext | null> {
+  const rows = await db
+    .select()
+    .from(schema.tenants)
+    .where(eq(schema.tenants.subdomain, subdomain))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
 export async function getTenantById(id: string): Promise<TenantContext | null> {
   const rows = await db
     .select()

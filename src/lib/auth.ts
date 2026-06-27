@@ -4,7 +4,7 @@ import { db, schema } from "@/db";
 import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { logAudit } from "@/lib/audit";
-import { resolveTenantSlug, getTenantBySlug } from "@/lib/tenant";
+import { resolveTenantSlug, getTenantBySubdomain } from "@/lib/tenant";
 
 const MAX_FAILED_ATTEMPTS = 5;
 
@@ -34,7 +34,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         // to a real tenant, or the login attempt is rejected outright.
         const hostname = request.headers.get("host") ?? "";
         const slug = resolveTenantSlug(hostname);
-        const tenant = slug ? await getTenantBySlug(slug) : null;
+        const tenant = slug ? await getTenantBySubdomain(slug) : null;
         if (slug && !tenant) {
           throw new TenantNotFoundError();
         }
