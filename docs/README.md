@@ -34,6 +34,7 @@ If you're a Claude Code session picking up work with no prior context, start wit
 | [13-folder-structure.md](13-folder-structure.md) | Repo layout |
 | [14-coding-standards.md](14-coding-standards.md) | Conventions |
 | [15-testing-guide.md](15-testing-guide.md) | How this app is actually tested today |
+| [e2e-testing-guide.md](e2e-testing-guide.md) | Full click-by-click end-to-end test script, every feature |
 | [16-troubleshooting.md](16-troubleshooting.md) | Known failure modes + fixes |
 | [17-future-roadmap.md](17-future-roadmap.md) | What's next |
 | [18-release-history.md](18-release-history.md) | Every release to date |

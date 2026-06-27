@@ -1,5 +1,7 @@
 # 15 — Testing Guide
 
+For a concrete, ordered, click-by-click script covering the entire application (auth, all four lead-capture entry points, the full agent pipeline, CRM sync, opportunities/pipeline, ROI, admin/IAM, multi-tenant isolation, mobile, deployment verification), see [e2e-testing-guide.md](e2e-testing-guide.md). This page describes the *philosophy and general practice* of how testing is done here; that page is the *runbook*.
+
 **There is no automated test suite in this repository** — no Jest/Vitest config, no `*.test.ts` files, no CI pipeline running tests. Every verification described in this project's history has been manual, browser-driven, or direct API/database inspection. This doc describes how that manual verification has actually been done, so it's repeatable — it is not describing an automated framework that exists.
 
 ## Manual testing (the actual current practice)
