@@ -49,7 +49,11 @@ export default function LoginPage() {
         redirect: false,
       });
       if (res?.error) {
-        setError("Invalid email or password.");
+        setError(
+          res.code === "tenant_not_found"
+            ? "We couldn't find a workspace for this URL. Check the link or contact your administrator."
+            : "Invalid email or password."
+        );
       } else {
         router.push("/dashboard");
       }

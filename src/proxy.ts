@@ -9,10 +9,16 @@ export function proxy(req: NextRequest) {
   const slug = resolveTenantSlug(hostname);
 
   const requestHeaders = new Headers(req.headers);
-  requestHeaders.set("x-tenant-slug", slug);
+  if (slug) requestHeaders.set("x-tenant-slug", slug);
 
   const res = NextResponse.next({ request: { headers: requestHeaders } });
-  res.cookies.set("tenant_slug", slug, { httpOnly: true, sameSite: "lax" });
+  // Only set the cookie for an actual tenant subdomain. On the apex domain
+  // or localhost (slug === null), no tenant-specific cookie is forced.
+  if (slug) {
+    res.cookies.set("tenant_slug", slug, { httpOnly: true, sameSite: "lax" });
+  } else {
+    res.cookies.delete("tenant_slug");
+  }
   return res;
 }
 

@@ -1,11 +1,19 @@
-import NextAuth from "next-auth";
+import NextAuth, { CredentialsSignin } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { db, schema } from "@/db";
 import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { logAudit } from "@/lib/audit";
+import { resolveTenantSlug, getTenantBySlug } from "@/lib/tenant";
 
 const MAX_FAILED_ATTEMPTS = 5;
+
+// Thrown when the subdomain a login was attempted on doesn't map to any
+// known tenant — distinct from "wrong email/password" so the client can
+// tell a configuration/link problem apart from a credentials mistake.
+export class TenantNotFoundError extends CredentialsSignin {
+  code = "tenant_not_found";
+}
 
 // Future SSO/SAML providers (Google, Entra ID, Okta) would be added to this
 // `providers` array as additional entries — not implemented in this release.
@@ -17,8 +25,19 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         email:    { label: "Email",    type: "email" },
         password: { label: "Password", type: "password" },
       },
-      async authorize(credentials) {
+      async authorize(credentials, request) {
         if (!credentials?.email || !credentials?.password) return null;
+
+        // null on the apex domain / localhost (no tenant subdomain in use
+        // yet) — preserves today's tenant-agnostic-by-email login behavior.
+        // Non-null means a real tenant subdomain was used and must resolve
+        // to a real tenant, or the login attempt is rejected outright.
+        const hostname = request.headers.get("host") ?? "";
+        const slug = resolveTenantSlug(hostname);
+        const tenant = slug ? await getTenantBySlug(slug) : null;
+        if (slug && !tenant) {
+          throw new TenantNotFoundError();
+        }
 
         const rows = await db
           .select()
@@ -28,6 +47,15 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
         const user = rows[0];
         if (!user) return null;
+
+        // platform_admin accounts are cross-tenant (tenantId is null) and may
+        // log in from any tenant's subdomain. Every other role, when a real
+        // tenant subdomain is in use, must belong to that exact tenant —
+        // otherwise a valid email/password for a *different* tenant would
+        // still succeed here.
+        if (tenant && user.role !== "platform_admin" && user.tenantId !== tenant.id) {
+          return null;
+        }
 
         if (user.status === "suspended" || user.status === "locked" || user.status === "invited" || user.status === "inactive") {
           return null;
