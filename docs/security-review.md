@@ -34,11 +34,13 @@ Confirmed via grep: no rate-limiting middleware or library anywhere in `src/`. `
 
 ## Medium
 
-### No `middleware.ts` — auth/security checks are per-route, not centralized
+### Correction (2026-06-27): edge-layer gate exists, under this fork's renamed convention
 
-There is no `src/middleware.ts`. Every API route independently calls `await auth()` and checks `session` at the top. This works (verified consistently present in the routes inspected) but means a new route added without copying that boilerplate has no fallback protection — there's no centralized gate.
+An earlier pass of this review reported "no `middleware.ts` — auth/security checks are per-route, not centralized" as a Medium finding. **That finding is incorrect and is retracted here.**
 
-- **Recommendation:** consider a `middleware.ts` that at minimum enforces auth on all `/api/*` and `(app)/*` paths as a backstop, while still allowing routes to do their own fine-grained tenant/role checks. Not urgent since current routes were checked and are consistent, but worth doing before the route count grows further.
+This codebase is a customized Next.js fork (root `AGENTS.md`: "this is NOT the Next.js you know — APIs, conventions, and file structure may all differ from your training data"). Its middleware equivalent is [src/proxy.ts](../src/proxy.ts), not `middleware.ts` — confirmed present, exporting a `proxy()` function with the standard `config.matcher` shape, running on every request except static assets. It currently handles tenant-slug resolution (see `docs/tenant-auth-review.md`) but not auth enforcement.
+
+The underlying observation still has some validity, restated accurately: `src/proxy.ts` does **not** currently enforce authentication centrally — each API route still independently calls `await auth()`. So the "no centralized auth backstop" recommendation stands, just not the "no middleware file exists at all" premise. Recommendation unchanged: consider adding an auth check inside `proxy.ts` as a backstop for `/api/*` and `(app)/*` paths, while routes keep their own fine-grained tenant/role checks. Not urgent — current routes were checked and are consistent — but worth doing before the route count grows further.
 
 ### Sensitive logging — not found, but no enforced policy
 
