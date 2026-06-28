@@ -215,6 +215,8 @@ function toArray(v: unknown): string[] {
 
 // ─── Activity logging helper ───────────────────────────────────────────────
 
+type DbOrTx = Pick<typeof db, "insert">;
+
 export async function logOpportunityActivity(params: {
   tenantId: string;
   opportunityId: string;
@@ -223,8 +225,8 @@ export async function logOpportunityActivity(params: {
   activityType: schema.OpportunityActivityType;
   description: string;
   metadata?: Record<string, unknown>;
-}) {
-  await db.insert(schema.opportunityActivities).values({
+}, dbClient: DbOrTx = db) {
+  await dbClient.insert(schema.opportunityActivities).values({
     tenantId: params.tenantId,
     opportunityId: params.opportunityId,
     leadId: params.leadId,

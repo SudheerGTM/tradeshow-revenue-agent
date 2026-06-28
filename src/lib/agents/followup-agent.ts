@@ -15,6 +15,44 @@ import { eq, and, desc } from "drizzle-orm";
 import { logAudit } from "@/lib/audit";
 import type { FollowupType, FollowupPriority, FollowupTiming, ScoreClassification } from "@/db/schema";
 
+type DbOrTx = Pick<typeof db, "select" | "insert" | "update">;
+
+/**
+ * Idempotent follow-up draft creation (Release 13.7.1 — workflow
+ * idempotency). Only one active ("draft" status) recommendation per
+ * tenant+lead+followupType should exist at a time — re-running the workflow
+ * refreshes its content in place instead of piling up duplicates. Once a
+ * draft is approved or rejected it's no longer "draft" status, so a fresh
+ * run is free to create a new one without touching that historical record.
+ */
+async function upsertDraftFollowup(
+  dbClient: DbOrTx,
+  values: typeof schema.followupRecommendations.$inferInsert
+): Promise<{ rec: typeof schema.followupRecommendations.$inferSelect; wasExisting: boolean }> {
+  const [existing] = await dbClient
+    .select({ id: schema.followupRecommendations.id })
+    .from(schema.followupRecommendations)
+    .where(and(
+      eq(schema.followupRecommendations.tenantId, values.tenantId),
+      eq(schema.followupRecommendations.leadId, values.leadId),
+      eq(schema.followupRecommendations.followupType, values.followupType),
+      eq(schema.followupRecommendations.status, "draft"),
+    ))
+    .limit(1);
+
+  if (existing) {
+    const [rec] = await dbClient
+      .update(schema.followupRecommendations)
+      .set({ ...values, updatedAt: new Date() })
+      .where(eq(schema.followupRecommendations.id, existing.id))
+      .returning();
+    return { rec, wasExisting: true };
+  }
+
+  const [rec] = await dbClient.insert(schema.followupRecommendations).values(values).returning();
+  return { rec, wasExisting: false };
+}
+
 // ─── Types ─────────────────────────────────────────────────────────────────
 
 interface FollowupContext {
@@ -169,33 +207,37 @@ export async function generateFollowup(leadId: string, tenantId: string, userId:
 
   // Needs review classification → no outreach drafts, just a manual review recommendation
   if (strategy.manualReviewOnly) {
-    const [rec] = await db.insert(schema.followupRecommendations).values({
-      tenantId,
-      eventId: lead.eventId ?? null,
-      leadId,
-      leadScoreId: score.id,
-      createdByUserId: userId ?? null,
-      followupType: "email",
-      priority: "low",
-      recommendedTiming: strategy.timing,
-      subjectLine: null,
-      messageContent: "This lead's score is classified as Needs Review. Manual review is recommended before any outreach is drafted — the data may be incomplete or low-confidence.",
-      callToAction: "Review lead, conversation intelligence, and enrichment data manually.",
-      reasoning: "Lead score classification is needs_review — automated outreach generation is paused until a human reviews the underlying data.",
-      personalizationPoints: [],
-      confidenceScore: String(score.recommendedNextAction ? 50 : 30),
-      needsHumanReview: true,
-      status: "draft",
-      modelUsed: "none",
-      rawAiResponse: null,
-    }).returning();
+    const { rec } = await db.transaction(async (tx) => {
+      const result = await upsertDraftFollowup(tx, {
+        tenantId,
+        eventId: lead.eventId ?? null,
+        leadId,
+        leadScoreId: score.id,
+        createdByUserId: userId ?? null,
+        followupType: "email",
+        priority: "low",
+        recommendedTiming: strategy.timing,
+        subjectLine: null,
+        messageContent: "This lead's score is classified as Needs Review. Manual review is recommended before any outreach is drafted — the data may be incomplete or low-confidence.",
+        callToAction: "Review lead, conversation intelligence, and enrichment data manually.",
+        reasoning: "Lead score classification is needs_review — automated outreach generation is paused until a human reviews the underlying data.",
+        personalizationPoints: [],
+        confidenceScore: String(score.recommendedNextAction ? 50 : 30),
+        needsHumanReview: true,
+        status: "draft",
+        modelUsed: "none",
+        rawAiResponse: null,
+      });
 
-    await logAudit({
-      tenantId, userId,
-      action: "followup_generated",
-      resourceType: "followup",
-      resourceId: rec.id,
-      metadata: { leadId, type: "manual_review_recommendation" },
+      await logAudit({
+        tenantId, userId,
+        action: "followup_generated",
+        resourceType: "followup",
+        resourceId: result.rec.id,
+        metadata: { leadId, type: "manual_review_recommendation", refreshedExisting: result.wasExisting },
+      }, tx);
+
+      return result;
     });
 
     return [rec];
@@ -226,36 +268,40 @@ export async function generateFollowup(leadId: string, tenantId: string, userId:
       };
     }
 
-    const [rec] = await db.insert(schema.followupRecommendations).values({
-      tenantId,
-      eventId: lead.eventId ?? null,
-      leadId,
-      leadScoreId: score.id,
-      createdByUserId: userId ?? null,
-      followupType: aiDraft.followupType,
-      priority: aiDraft.priority,
-      recommendedTiming: aiDraft.recommendedTiming,
-      subjectLine: aiDraft.subjectLine || null,
-      messageContent: aiDraft.messageContent,
-      callToAction: aiDraft.callToAction,
-      reasoning: aiDraft.reasoning,
-      personalizationPoints: aiDraft.personalizationPoints,
-      confidenceScore: String(aiDraft.confidenceScore),
-      needsHumanReview: aiDraft.needsHumanReview,
-      status: "draft",
-      modelUsed,
-      rawAiResponse: rawResponse as Record<string, unknown> | null,
-    }).returning();
+    const { rec } = await db.transaction(async (tx) => {
+      const result = await upsertDraftFollowup(tx, {
+        tenantId,
+        eventId: lead.eventId ?? null,
+        leadId,
+        leadScoreId: score.id,
+        createdByUserId: userId ?? null,
+        followupType: aiDraft.followupType,
+        priority: aiDraft.priority,
+        recommendedTiming: aiDraft.recommendedTiming,
+        subjectLine: aiDraft.subjectLine || null,
+        messageContent: aiDraft.messageContent,
+        callToAction: aiDraft.callToAction,
+        reasoning: aiDraft.reasoning,
+        personalizationPoints: aiDraft.personalizationPoints,
+        confidenceScore: String(aiDraft.confidenceScore),
+        needsHumanReview: aiDraft.needsHumanReview,
+        status: "draft",
+        modelUsed,
+        rawAiResponse: rawResponse as Record<string, unknown> | null,
+      });
+
+      await logAudit({
+        tenantId, userId,
+        action: "followup_generated",
+        resourceType: "followup",
+        resourceId: result.rec.id,
+        metadata: { leadId, followupType, confidence: aiDraft.confidenceScore, refreshedExisting: result.wasExisting },
+      }, tx);
+
+      return result;
+    });
 
     records.push(rec);
-
-    await logAudit({
-      tenantId, userId,
-      action: "followup_generated",
-      resourceType: "followup",
-      resourceId: rec.id,
-      metadata: { leadId, followupType, confidence: aiDraft.confidenceScore },
-    });
   }
 
   return records;

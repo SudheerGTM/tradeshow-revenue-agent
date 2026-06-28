@@ -17,6 +17,62 @@ import {
 } from "@/lib/integrations/hubspot";
 import type { ScoreClassification, FollowupTiming } from "@/db/schema";
 
+type DbOrTx = Pick<typeof db, "select" | "insert" | "update">;
+
+/**
+ * Idempotent CRM sync job creation (Release 13.7.1 — workflow idempotency).
+ *
+ * Re-running the workflow for the same lead must not pile up duplicate
+ * pending_approval jobs. Only one active (pending_approval) job per
+ * tenant+lead+syncType should exist at a time — re-preparing refreshes its
+ * payload in place instead of inserting a new row. Completed/failed jobs
+ * are left untouched as historical/audit records.
+ */
+export async function upsertPendingCRMSyncJob(
+  dbClient: DbOrTx,
+  params: {
+    tenantId: string;
+    eventId: string | null;
+    leadId: string;
+    createdByUserId: string | null;
+    syncPayload: Record<string, unknown>;
+  }
+): Promise<{ job: typeof schema.crmSyncJobs.$inferSelect; wasExisting: boolean }> {
+  const [existing] = await dbClient
+    .select({ id: schema.crmSyncJobs.id })
+    .from(schema.crmSyncJobs)
+    .where(and(
+      eq(schema.crmSyncJobs.tenantId, params.tenantId),
+      eq(schema.crmSyncJobs.leadId, params.leadId),
+      eq(schema.crmSyncJobs.syncType, "full_sync"),
+      eq(schema.crmSyncJobs.syncStatus, "pending_approval"),
+    ))
+    .limit(1);
+
+  if (existing) {
+    const [job] = await dbClient
+      .update(schema.crmSyncJobs)
+      .set({ syncPayload: params.syncPayload, eventId: params.eventId, updatedAt: new Date() })
+      .where(eq(schema.crmSyncJobs.id, existing.id))
+      .returning();
+    return { job, wasExisting: true };
+  }
+
+  const [job] = await dbClient
+    .insert(schema.crmSyncJobs)
+    .values({
+      tenantId: params.tenantId,
+      eventId: params.eventId,
+      leadId: params.leadId,
+      createdByUserId: params.createdByUserId,
+      syncType: "full_sync",
+      syncStatus: "pending_approval",
+      syncPayload: params.syncPayload,
+    })
+    .returning();
+  return { job, wasExisting: false };
+}
+
 // ─── Types ─────────────────────────────────────────────────────────────────
 
 export interface CRMPayloadPreview {

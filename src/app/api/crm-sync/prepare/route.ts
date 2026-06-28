@@ -3,7 +3,7 @@ import { auth } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { db, schema } from "@/db";
 import { eq, and } from "drizzle-orm";
-import { prepareCRMRecord } from "@/lib/agents/crm-sync-agent";
+import { prepareCRMRecord, upsertPendingCRMSyncJob } from "@/lib/agents/crm-sync-agent";
 
 // POST /api/crm-sync/prepare — builds a CRM payload preview and stores it as
 // a pending_approval job. Does NOT write to HubSpot. Any authenticated tenant
@@ -41,25 +41,27 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: preview.blockedReason, preview }, { status: 422 });
     }
 
-    const [job] = await db.insert(schema.crmSyncJobs).values({
-      tenantId,
-      eventId: leadRows[0].eventId ?? null,
-      leadId,
-      createdByUserId: session.user.id ?? null,
-      syncType: "full_sync",
-      syncStatus: "pending_approval",
-      syncPayload: preview as unknown as Record<string, unknown>,
-    }).returning();
+    const { job, wasExisting } = await db.transaction(async (tx) => {
+      const result = await upsertPendingCRMSyncJob(tx, {
+        tenantId,
+        eventId: leadRows[0].eventId ?? null,
+        leadId,
+        createdByUserId: session.user.id ?? null,
+        syncPayload: preview as unknown as Record<string, unknown>,
+      });
 
-    await logAudit({
-      tenantId, userId: session.user.id,
-      action: "crm_sync_prepared",
-      resourceType: "crm_sync",
-      resourceId: job.id,
-      metadata: { leadId, classification: preview.classification },
+      await logAudit({
+        tenantId, userId: session.user.id,
+        action: "crm_sync_prepared",
+        resourceType: "crm_sync",
+        resourceId: result.job.id,
+        metadata: { leadId, classification: preview.classification, refreshedExisting: result.wasExisting },
+      }, tx);
+
+      return result;
     });
 
-    return NextResponse.json(job, { status: 201 });
+    return NextResponse.json(job, { status: wasExisting ? 200 : 201 });
   } catch (err) {
     const reason = err instanceof Error ? err.message : "Failed to prepare CRM sync";
     return NextResponse.json({ error: reason }, { status: 502 });

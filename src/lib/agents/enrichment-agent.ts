@@ -12,13 +12,47 @@ import { enrichLead, type ApolloCompanyResult, type ApolloContactResult } from "
 import { logAudit } from "@/lib/audit";
 import type { EnrichmentStatus } from "@/db/schema";
 
-export async function runEnrichment(leadId: string, tenantId: string, userId: string | null) {
+export async function runEnrichment(
+  leadId: string, tenantId: string, userId: string | null, options: { forceRefresh?: boolean } = {}
+) {
   const leadRows = await db.select().from(schema.leads)
     .where(and(eq(schema.leads.id, leadId), eq(schema.leads.tenantId, tenantId))).limit(1);
   if (!leadRows.length) throw new Error("Lead not found");
   const lead = leadRows[0];
 
   if (!lead.companyName?.trim()) throw new Error("Lead has no company name — cannot enrich");
+
+  // Release 13.7.1 — workflow idempotency / cost control: re-running the
+  // workflow must not re-call the (paid, rate-limited) Apollo API when a
+  // usable enrichment already exists. "Usable" = status "enriched" (Apollo
+  // found the record with reasonable confidence — see the confidence<70 ->
+  // "needs_review" branch below) — needs_review/failed/missing rows are
+  // still considered worth retrying. The manual "Refresh Enrichment" button
+  // (/api/enrichment/enrich) always calls Apollo — that route, not this one,
+  // is the explicit user-requested-refresh path the spec calls for.
+  if (!options.forceRefresh) {
+    const [existingCompany] = await db.select({ enrichmentStatus: schema.companyEnrichment.enrichmentStatus })
+      .from(schema.companyEnrichment)
+      .where(and(eq(schema.companyEnrichment.leadId, leadId), eq(schema.companyEnrichment.tenantId, tenantId))).limit(1);
+    const [existingContact] = await db.select({ enrichmentStatus: schema.contactEnrichment.enrichmentStatus })
+      .from(schema.contactEnrichment)
+      .where(and(eq(schema.contactEnrichment.leadId, leadId), eq(schema.contactEnrichment.tenantId, tenantId))).limit(1);
+
+    if (existingCompany?.enrichmentStatus === "enriched" && existingContact?.enrichmentStatus === "enriched") {
+      await logAudit({
+        tenantId, userId,
+        action: "enrichment_skipped_cached",
+        resourceType: "lead",
+        resourceId: leadId,
+        metadata: { reason: "Apollo skipped — using cached enrichment", triggeredBy: "orchestrator" },
+      });
+      const [companyRow] = await db.select().from(schema.companyEnrichment)
+        .where(and(eq(schema.companyEnrichment.leadId, leadId), eq(schema.companyEnrichment.tenantId, tenantId))).limit(1);
+      const [contactRow] = await db.select().from(schema.contactEnrichment)
+        .where(and(eq(schema.contactEnrichment.leadId, leadId), eq(schema.contactEnrichment.tenantId, tenantId))).limit(1);
+      return { company: companyRow, contact: contactRow, skipped: true as const };
+    }
+  }
 
   await logAudit({
     tenantId, userId,
@@ -58,7 +92,7 @@ export async function runEnrichment(leadId: string, tenantId: string, userId: st
     metadata: { companyFound: result.companyFound, contactFound: result.contactFound, companyStatus, contactStatus, triggeredBy: "orchestrator" },
   });
 
-  return { company: companyRow, contact: contactRow };
+  return { company: companyRow, contact: contactRow, skipped: false as const };
 }
 
 async function upsertCompanyEnrichment(

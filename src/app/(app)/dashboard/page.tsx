@@ -165,19 +165,33 @@ export default async function DashboardPage() {
       else if (r.status === "queued" || r.status === "in_progress") txStats.pending += r.count;
     }
 
-    const ciByStatus = await db
-      .select({ status: schema.conversationInsights.status, count: sql<number>`count(*)::int` })
+    // Release 13.7.1 — workflow idempotency: conversation_insights intentionally
+    // keeps one row per analysis run (historical versions stay for Lead Detail
+    // audit), so the executive dashboard must aggregate the *latest* insight
+    // per lead, not every row, or repeated re-runs inflate these counts.
+    const latestInsightSq = db
+      .selectDistinctOn([schema.conversationInsights.leadId], {
+        leadId: schema.conversationInsights.leadId,
+        status: schema.conversationInsights.status,
+        urgency: schema.conversationInsights.urgency,
+      })
       .from(schema.conversationInsights)
       .where(eq(schema.conversationInsights.tenantId, tenantId))
-      .groupBy(schema.conversationInsights.status);
+      .orderBy(schema.conversationInsights.leadId, desc(schema.conversationInsights.createdAt))
+      .as("latest_insight_sq");
+
+    const ciByStatus = await db
+      .select({ status: latestInsightSq.status, count: sql<number>`count(*)::int` })
+      .from(latestInsightSq)
+      .groupBy(latestInsightSq.status);
     for (const r of ciByStatus) {
       ciStats.total += r.count;
       if (r.status === "needs_review") ciStats.needsReview = r.count;
     }
     const [highUrgencyRow] = await db
       .select({ count: sql<number>`count(*)::int` })
-      .from(schema.conversationInsights)
-      .where(and(eq(schema.conversationInsights.tenantId, tenantId), eq(schema.conversationInsights.urgency, "high")));
+      .from(latestInsightSq)
+      .where(eq(latestInsightSq.urgency, "high"));
     ciStats.highUrgency = highUrgencyRow?.count ?? 0;
 
     const recentInsights = await db

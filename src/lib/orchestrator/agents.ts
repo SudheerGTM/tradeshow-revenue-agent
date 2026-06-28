@@ -13,7 +13,7 @@ import { runConversationIntelligenceFromNotes } from "@/lib/agents/conversation-
 import { runEnrichment } from "@/lib/agents/enrichment-agent";
 import { scoreLead } from "@/lib/agents/lead-scoring";
 import { generateFollowup } from "@/lib/agents/followup-agent";
-import { prepareCRMRecord } from "@/lib/agents/crm-sync-agent";
+import { prepareCRMRecord, upsertPendingCRMSyncJob } from "@/lib/agents/crm-sync-agent";
 import { recalculateAndStoreROI } from "@/lib/agents/roi-agent";
 import { evaluatePolicy } from "./policies";
 import { eventBus } from "./event-bus";
@@ -42,7 +42,7 @@ const enrichmentAgent: AgentAdapter = {
   async execute(ctx): Promise<AgentRunResult> {
     try {
       const result = await runEnrichment(ctx.leadId, ctx.tenantId, ctx.userId);
-      return { status: "completed", output: { companyStatus: result.company.enrichmentStatus, contactStatus: result.contact.enrichmentStatus } };
+      return { status: "completed", output: { companyStatus: result.company?.enrichmentStatus, contactStatus: result.contact?.enrichmentStatus, apolloSkipped: result.skipped } };
     } catch (err) {
       const message = err instanceof Error ? err.message : "Enrichment failed";
       if (message.includes("no company name")) return { status: "skipped", error: message };
@@ -101,25 +101,27 @@ const crmSyncAgent: AgentAdapter = {
 
     const leadRows = await db.select({ eventId: schema.leads.eventId }).from(schema.leads).where(eq(schema.leads.id, ctx.leadId)).limit(1);
 
-    const [job] = await db.insert(schema.crmSyncJobs).values({
-      tenantId: ctx.tenantId,
-      eventId: leadRows[0]?.eventId ?? null,
-      leadId: ctx.leadId,
-      createdByUserId: ctx.userId,
-      syncType: "full_sync",
-      syncStatus: "pending_approval",
-      syncPayload: preview as unknown as Record<string, unknown>,
-    }).returning();
+    const { job, wasExisting } = await db.transaction(async (tx) => {
+      const result = await upsertPendingCRMSyncJob(tx, {
+        tenantId: ctx.tenantId,
+        eventId: leadRows[0]?.eventId ?? null,
+        leadId: ctx.leadId,
+        createdByUserId: ctx.userId,
+        syncPayload: preview as unknown as Record<string, unknown>,
+      });
 
-    await logAudit({
-      tenantId: ctx.tenantId, userId: ctx.userId,
-      action: "crm_sync_prepared",
-      resourceType: "crm_sync",
-      resourceId: job.id,
-      metadata: { leadId: ctx.leadId, classification: preview.classification, triggeredBy: "orchestrator" },
+      await logAudit({
+        tenantId: ctx.tenantId, userId: ctx.userId,
+        action: "crm_sync_prepared",
+        resourceType: "crm_sync",
+        resourceId: result.job.id,
+        metadata: { leadId: ctx.leadId, classification: preview.classification, triggeredBy: "orchestrator", refreshedExisting: result.wasExisting },
+      }, tx);
+
+      return result;
     });
 
-    return { status: "completed", output: { crmSyncJobId: job.id, classification: preview.classification } };
+    return { status: "completed", output: { crmSyncJobId: job.id, classification: preview.classification, refreshedExisting: wasExisting } };
   },
 };
 

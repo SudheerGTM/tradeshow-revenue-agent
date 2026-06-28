@@ -11,8 +11,14 @@ interface AuditParams {
   ipAddress?: string | null;
 }
 
-export async function logAudit(params: AuditParams) {
-  await db.insert(schema.auditLogs).values({
+type DbOrTx = Pick<typeof db, "insert">;
+
+// Accepts an optional transaction client so the audit write can be part of
+// the same atomic transaction as the business-object write it documents (see
+// Release 13.7.1 — a job/draft/opportunity write and its audit log entry
+// should commit or roll back together).
+export async function logAudit(params: AuditParams, dbClient: DbOrTx = db) {
+  await dbClient.insert(schema.auditLogs).values({
     tenantId:     params.tenantId   ?? null,
     userId:       params.userId     ?? null,
     action:       params.action,

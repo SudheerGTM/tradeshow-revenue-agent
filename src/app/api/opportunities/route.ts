@@ -122,42 +122,92 @@ export async function POST(req: NextRequest) {
       .where(and(eq(schema.leadScores.leadId, leadId), eq(schema.leadScores.tenantId, tenantId)))
       .orderBy(desc(schema.leadScores.createdAt)).limit(1);
 
-    const [opportunity] = await db.insert(schema.opportunities).values({
-      tenantId,
-      eventId: lead.eventId ?? null,
-      leadId,
-      leadScoreId: score?.id ?? null,
-      createdByUserId: session.user.id ?? null,
-      ownerUserId: session.user.id ?? null,
-      opportunityName: result.payload.opportunityName,
-      companyName: result.payload.companyName,
-      contactName: result.payload.contactName,
-      stage: result.payload.stage,
-      priority: result.payload.priority,
-      amount: result.payload.amount != null ? String(result.payload.amount) : null,
-      probability: String(result.payload.probability),
-      expectedRevenue: result.payload.expectedRevenue != null ? String(result.payload.expectedRevenue) : null,
-      nextStep: result.payload.nextStep,
-      riskNotes: result.payload.riskNotes,
-      aiRecommendation: result.payload.aiRecommendation,
-      source: "trade_show",
-      status: "active",
-    }).returning();
+    // Idempotency (Release 13.7.1): only one active opportunity per lead.
+    // Re-running creation (e.g. via repeated workflow execution) refreshes
+    // the AI-derived fields on the existing active opportunity instead of
+    // inserting a duplicate. Stage/priority/owner are left untouched here —
+    // those reflect manual pipeline progress a user may have already made,
+    // and a re-run must not regress them. A new opportunity is only created
+    // if no active (non-won/lost/archived) one exists yet for this lead.
+    const [existingActive] = await db.select({ id: schema.opportunities.id }).from(schema.opportunities)
+      .where(and(eq(schema.opportunities.tenantId, tenantId), eq(schema.opportunities.leadId, leadId), eq(schema.opportunities.status, "active")))
+      .limit(1);
 
-    await logOpportunityActivity({
-      tenantId, opportunityId: opportunity.id, leadId,
-      userId: session.user.id,
-      activityType: "stage_change",
-      description: `Opportunity created at stage "${result.payload.stage}"${managerOverride ? " (manager override from Cold classification)" : ""}.`,
-      metadata: { stage: result.payload.stage, priority: result.payload.priority, managerOverride: !!managerOverride },
-    });
+    if (existingActive) {
+      const opportunity = await db.transaction(async (tx) => {
+        const [updated] = await tx.update(schema.opportunities).set({
+          leadScoreId: score?.id ?? null,
+          amount: result.payload!.amount != null ? String(result.payload!.amount) : null,
+          probability: String(result.payload!.probability),
+          expectedRevenue: result.payload!.expectedRevenue != null ? String(result.payload!.expectedRevenue) : null,
+          nextStep: result.payload!.nextStep,
+          riskNotes: result.payload!.riskNotes,
+          aiRecommendation: result.payload!.aiRecommendation,
+          updatedAt: new Date(),
+        }).where(eq(schema.opportunities.id, existingActive.id)).returning();
 
-    await logAudit({
-      tenantId, userId: session.user.id,
-      action: "opportunity_created",
-      resourceType: "opportunity",
-      resourceId: opportunity.id,
-      metadata: { leadId, stage: result.payload.stage, amount: result.payload.amount, managerOverride: !!managerOverride },
+        await logOpportunityActivity({
+          tenantId, opportunityId: updated.id, leadId,
+          userId: session.user.id,
+          activityType: "note",
+          description: "Opportunity refreshed from re-run workflow output (AI fields and expected revenue updated; stage/priority left as-is).",
+          metadata: { amount: result.payload!.amount, expectedRevenue: result.payload!.expectedRevenue },
+        }, tx);
+
+        await logAudit({
+          tenantId, userId: session.user.id,
+          action: "opportunity_updated",
+          resourceType: "opportunity",
+          resourceId: updated.id,
+          metadata: { leadId, amount: result.payload!.amount, refreshedExisting: true },
+        }, tx);
+
+        return updated;
+      });
+
+      return NextResponse.json(opportunity, { status: 200 });
+    }
+
+    const opportunity = await db.transaction(async (tx) => {
+      const [created] = await tx.insert(schema.opportunities).values({
+        tenantId,
+        eventId: lead.eventId ?? null,
+        leadId,
+        leadScoreId: score?.id ?? null,
+        createdByUserId: session.user.id ?? null,
+        ownerUserId: session.user.id ?? null,
+        opportunityName: result.payload!.opportunityName,
+        companyName: result.payload!.companyName,
+        contactName: result.payload!.contactName,
+        stage: result.payload!.stage,
+        priority: result.payload!.priority,
+        amount: result.payload!.amount != null ? String(result.payload!.amount) : null,
+        probability: String(result.payload!.probability),
+        expectedRevenue: result.payload!.expectedRevenue != null ? String(result.payload!.expectedRevenue) : null,
+        nextStep: result.payload!.nextStep,
+        riskNotes: result.payload!.riskNotes,
+        aiRecommendation: result.payload!.aiRecommendation,
+        source: "trade_show",
+        status: "active",
+      }).returning();
+
+      await logOpportunityActivity({
+        tenantId, opportunityId: created.id, leadId,
+        userId: session.user.id,
+        activityType: "stage_change",
+        description: `Opportunity created at stage "${result.payload!.stage}"${managerOverride ? " (manager override from Cold classification)" : ""}.`,
+        metadata: { stage: result.payload!.stage, priority: result.payload!.priority, managerOverride: !!managerOverride },
+      }, tx);
+
+      await logAudit({
+        tenantId, userId: session.user.id,
+        action: "opportunity_created",
+        resourceType: "opportunity",
+        resourceId: created.id,
+        metadata: { leadId, stage: result.payload!.stage, amount: result.payload!.amount, managerOverride: !!managerOverride },
+      }, tx);
+
+      return created;
     });
 
     return NextResponse.json(opportunity, { status: 201 });
