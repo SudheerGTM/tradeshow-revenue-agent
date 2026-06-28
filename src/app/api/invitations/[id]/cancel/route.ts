@@ -3,7 +3,7 @@ import { auth } from "@/lib/auth";
 import { isTenantAdmin } from "@/lib/permissions";
 import { logAudit, getRequestIp } from "@/lib/audit";
 import { db, schema } from "@/db";
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 export async function POST(
   req: NextRequest,
@@ -13,16 +13,23 @@ export async function POST(
   if (!session || !isTenantAdmin(session.user.role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
-  const tenantId = session.user.tenantId;
-  if (!tenantId) return NextResponse.json({ error: "No tenant" }, { status: 400 });
 
   const { id } = await params;
+  // Derive the target tenant from the invitation itself, not the session —
+  // platform_admin's session.user.tenantId is null by design (cross-tenant
+  // role), so deriving from session would make this route unusable for
+  // platform_admin on any tenant's invitation. tenant_admin is still scoped
+  // to their own tenant via the check below.
   const rows = await db
-    .select({ id: schema.userInvitations.id, email: schema.userInvitations.email })
+    .select({ id: schema.userInvitations.id, email: schema.userInvitations.email, tenantId: schema.userInvitations.tenantId })
     .from(schema.userInvitations)
-    .where(and(eq(schema.userInvitations.id, id), eq(schema.userInvitations.tenantId, tenantId)))
+    .where(eq(schema.userInvitations.id, id))
     .limit(1);
   if (!rows.length) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (session.user.role !== "platform_admin" && rows[0].tenantId !== session.user.tenantId) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+  const tenantId = rows[0].tenantId;
 
   await db
     .update(schema.userInvitations)
