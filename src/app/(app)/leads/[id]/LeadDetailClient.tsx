@@ -157,7 +157,7 @@ export function LeadDetailClient({ lead, history, eventName, creatorName, availa
   const leadExpectedRevenue = score?.expectedRevenue != null ? parseFloat(score.expectedRevenue) : null;
 
   return (
-    <div className="space-y-5 max-w-7xl">
+    <div className="space-y-5 max-w-7xl pb-32 md:pb-0">
       {/* Back link */}
       <Link href="/leads" className="inline-flex items-center gap-1.5 text-sm text-[#94A3B8] hover:text-[#475569] transition">
         <ArrowLeft className="w-4 h-4" /> Back to Leads

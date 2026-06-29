@@ -30,11 +30,34 @@ export function Sidebar({ role }: { role: string }) {
         className="h-14 px-3 lg:px-4 flex items-center gap-2.5 shrink-0"
         style={{ borderBottom: "1px solid rgba(255,255,255,0.12)" }}
       >
-        <div
+        {/* <div
           className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
           style={{ background: "#00B8D9" }}
         >
           <span className="text-white text-xs font-bold">TS</span>
+        </div> */}
+
+        <div
+          className="relative w-8 h-8 rounded-lg shrink-0 group cursor-pointer"
+          style={{ background: "#00B8D9" }}
+          onClick={() => collapsed && setCollapsed(false)}
+        >
+          {/* Logo */}
+          <div
+            className={cn(
+              "absolute inset-0 flex items-center justify-center transition-opacity",
+              collapsed && "group-hover:opacity-0"
+            )}
+          >
+            <span className="text-white text-xs font-bold">TS</span>
+          </div>
+
+          {/* Expand Icon */}
+          {collapsed && (
+            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+              <ChevronRight className="w-4 h-4 text-white" />
+            </div>
+          )}
         </div>
         {!collapsed && (
           <div className="hidden lg:block flex-1 min-w-0">
@@ -44,7 +67,7 @@ export function Sidebar({ role }: { role: string }) {
         )}
         <button
           onClick={() => setCollapsed(c => !c)}
-          className="hidden lg:block text-white/50 hover:text-white transition shrink-0 ml-auto"
+          className="text-white/50 hover:text-white transition shrink-0 ml-auto"
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
           {collapsed
