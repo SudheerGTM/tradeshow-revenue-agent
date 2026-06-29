@@ -143,15 +143,20 @@ export default function LoginPage() {
         <div className="w-full max-w-md">
           {/* Mobile-only logo + value statement */}
           <div className="lg:hidden flex flex-col items-center mb-6 text-center">
-            <div className="flex items-center gap-3 mb-2">
-              <div className="relative w-12 h-12 shrink-0">
-                <img
-                  src={LOGO_SRC}
-                  alt="Trade Show Revenue Agent logo"
-                  className="w-full h-full object-contain"
-                />
-              </div>
-              <span className="font-bold text-slate-900 text-lg">Trade Show Revenue Agent</span>
+            <div className="flex flex-col items-center mb-6 text-center">
+              <img
+                src={LOGO_SRC}
+                alt="Trade Show Revenue Agent logo"
+                className="w-48 h-auto mb-3 object-contain"
+              />
+
+              <h1 className="text-2xl font-bold text-slate-900">
+                Trade Show Revenue Agent
+              </h1>
+
+              <p className="mt-2 text-sm text-slate-500 max-w-xs">
+                Capture booth leads, score with AI, and sync to CRM — all in one place.
+              </p>
             </div>
             <p className="text-slate-500 text-xs max-w-xs">
               Capture booth leads, score with AI, and sync to CRM — all in one place.
