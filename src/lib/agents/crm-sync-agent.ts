@@ -276,6 +276,14 @@ export async function prepareCRMRecord(leadId: string, tenantId: string): Promis
 // ─── Execute (writes to HubSpot — only after approval) ─────────────────────
 
 export async function executeSync(jobId: string, tenantId: string) {
+  // Fail with a clear, actionable message rather than letting the raw
+  // "HUBSPOT_ACCESS_TOKEN is not set" error from hubspot.ts surface to the
+  // user — this tenant hasn't connected HubSpot yet, which is a normal,
+  // expected state, not an application error.
+  if (!process.env.HUBSPOT_ACCESS_TOKEN) {
+    throw new Error("CRM Sync is configured but HubSpot credentials are not connected in this tenant. Contact your administrator to connect HubSpot.");
+  }
+
   const [job] = await db.select().from(schema.crmSyncJobs)
     .where(and(eq(schema.crmSyncJobs.id, jobId), eq(schema.crmSyncJobs.tenantId, tenantId))).limit(1);
   if (!job) throw new Error("Sync job not found");

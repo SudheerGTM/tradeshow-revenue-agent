@@ -47,11 +47,18 @@ export function CRMSyncPanel({ leadId, userRole }: Props) {
   const [preparing, setPreparing] = useState(false);
   const [actioning, setActioning] = useState(false);
   const [error, setError] = useState("");
+  const [hubspotConnected, setHubspotConnected] = useState(true);
 
   const canApprove = userRole === "manager" || userRole === "tenant_admin";
   const canRetry = userRole === "tenant_admin";
 
   useEffect(() => { fetchJobs(); }, [leadId]);
+  useEffect(() => {
+    fetch("/api/crm-sync/status")
+      .then((res) => res.ok ? res.json() : { hubspotConnected: true })
+      .then((data) => setHubspotConnected(data.hubspotConnected))
+      .catch(() => {});
+  }, []);
 
   async function fetchJobs() {
     setLoading(true);
@@ -154,6 +161,15 @@ export function CRMSyncPanel({ leadId, userRole }: Props) {
             </span>
           )}
         </div>
+
+        {!hubspotConnected && (
+          <div className="bg-[#fee2e2] border border-[#DC2626]/20 rounded-xl px-3 py-2 flex items-start gap-2">
+            <AlertTriangle className="w-3.5 h-3.5 text-[#DC2626] shrink-0 mt-0.5" />
+            <p className="text-xs text-[#DC2626]">
+              CRM Sync is configured but HubSpot credentials are not connected in this tenant. Contact your administrator to connect HubSpot.
+            </p>
+          </div>
+        )}
 
         <div className="bg-[#fef3c7] border border-[#F59E0B]/30 rounded-xl px-3 py-2">
           <p className="text-xs text-[#92400e]">
