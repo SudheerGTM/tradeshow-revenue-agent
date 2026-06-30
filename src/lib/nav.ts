@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, CalendarDays, Users, Mail,
-  RefreshCw, BarChart2, Settings, ShieldCheck, UserPlus, Zap, Briefcase, Kanban, Bot, Workflow,
+  RefreshCw, BarChart2, Settings, ShieldCheck, UserPlus, Zap, Briefcase, Kanban, Bot, Workflow, ClipboardList,
 } from "lucide-react";
 
 export interface NavItem {
@@ -27,7 +27,8 @@ export const NAV: NavItem[] = [
   { href: "/roi-analytics",      label: "ROI Analytics",           icon: BarChart2,       release: 12 },
   { href: "/workflows",          label: "Workflows",               icon: Workflow,        release: 13 },
   { href: "/agents",             label: "Agent Health",            icon: Bot,             release: 13 },
-  { href: "/admin/tenants",      label: "Tenants",                 icon: Zap,             release: 2, roles: ["platform_admin"] },
+  { href: "/admin/tenants",         label: "Tenants",          icon: Zap,           release: 2,  roles: ["platform_admin"] },
+  { href: "/admin/access-requests", label: "Access Requests",  icon: ClipboardList, release: 13, roles: ["platform_admin"] },
   { href: "/admin/users",        label: "Users",                   icon: ShieldCheck,     release: 2, roles: ["platform_admin", "tenant_admin", "manager"] },
   { href: "/settings/tenant",    label: "Settings",                icon: Settings,        release: 2 },
 ];

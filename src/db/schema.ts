@@ -995,3 +995,57 @@ export type NewAgentExecution = typeof agentExecutions.$inferInsert;
 export type AgentExecutionStatus = "queued" | "running" | "completed" | "failed" | "cancelled" | "skipped";
 export type AgentPolicy = typeof agentPolicies.$inferSelect;
 export type NewAgentPolicy = typeof agentPolicies.$inferInsert;
+
+// ─── Tenant Access Requests ───────────────────────────────────────────────────
+
+export const accessRequestStatusEnum = pgEnum("access_request_status", [
+  "requested",
+  "under_review",
+  "approved",
+  "rejected",
+  "provisioned",
+]);
+
+export const tenantAccessRequests = pgTable(
+  "tenant_access_requests",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+
+    companyName:    varchar("company_name",    { length: 255 }).notNull(),
+    companyWebsite: varchar("company_website", { length: 255 }),
+    contactName:    varchar("contact_name",    { length: 255 }).notNull(),
+    contactEmail:   varchar("contact_email",   { length: 255 }).notNull(),
+    phone:          varchar("phone",           { length: 50 }),
+    country:        varchar("country",         { length: 100 }),
+
+    eventName:     varchar("event_name",   { length: 255 }),
+    expectedUsers: integer("expected_users"),
+    crmSystem:     varchar("crm_system",   { length: 100 }),
+    useCase:       text("use_case"),
+    message:       text("message"),
+
+    honeypotTriggered: boolean("honeypot_triggered").notNull().default(false),
+    ipAddress:         varchar("ip_address",  { length: 64 }),
+    userAgent:         varchar("user_agent",  { length: 512 }),
+
+    status:            accessRequestStatusEnum("status").notNull().default("requested"),
+    reviewedByUserId:  uuid("reviewed_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    reviewedAt:        timestamp("reviewed_at",     { withTimezone: true }),
+    rejectionReason:   text("rejection_reason"),
+    adminNotes:        text("admin_notes"),
+
+    createdTenantId:   uuid("created_tenant_id").references(() => tenants.id, { onDelete: "set null" }),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("tar_status_idx").on(t.status),
+    index("tar_email_idx").on(t.contactEmail),
+    index("tar_created_idx").on(t.createdAt),
+  ]
+);
+
+export type TenantAccessRequest = typeof tenantAccessRequests.$inferSelect;
+export type NewTenantAccessRequest = typeof tenantAccessRequests.$inferInsert;
+export type AccessRequestStatus = "requested" | "under_review" | "approved" | "rejected" | "provisioned";

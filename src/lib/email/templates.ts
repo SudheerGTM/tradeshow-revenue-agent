@@ -78,6 +78,112 @@ export function accountActivatedEmail(params: { to: string; firstName: string; t
   return { to: params.to, subject: "Your account is activated", html, text };
 }
 
+// ─── Tenant Access Request emails ─────────────────────────────────────────────
+
+export function accessRequestConfirmationEmail(params: {
+  to: string;
+  contactName: string;
+  companyName: string;
+}): EmailMessage {
+  const firstName = params.contactName.split(" ")[0];
+  const { html, text } = wrap(
+    `<p>Hi ${firstName},</p>
+     <p>Thank you for requesting access to <strong>Trade Show Revenue Agent</strong>.</p>
+     <p>We've received your request for <strong>${params.companyName}</strong> and our team will review it shortly. You'll receive an email once a decision has been made.</p>
+     <p style="color:#94A3B8;font-size:12px;margin-top:16px;">If you didn't submit this request, you can safely ignore this email.</p>`,
+    `Hi ${firstName},\n\nThank you for requesting access to Trade Show Revenue Agent.\n\nWe've received your request for ${params.companyName} and our team will review it shortly. You'll receive an email once a decision has been made.\n\nIf you didn't submit this request, you can safely ignore this email.`
+  );
+  return {
+    to: params.to,
+    subject: "We received your Trade Show Revenue Agent access request",
+    html,
+    text,
+  };
+}
+
+export function accessRequestAdminNotificationEmail(params: {
+  to: string;
+  contactName: string;
+  contactEmail: string;
+  companyName: string;
+  companyWebsite?: string;
+  eventName?: string;
+  expectedUsers?: number;
+  crmSystem?: string;
+  useCase?: string;
+  message?: string;
+  reviewUrl: string;
+}): EmailMessage {
+  const { html, text } = wrap(
+    `<p>A new access request has been submitted.</p>
+     <table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:8px;">
+       <tr><td style="padding:4px 0;color:#94A3B8;width:140px;">Name</td><td><strong>${params.contactName}</strong></td></tr>
+       <tr><td style="padding:4px 0;color:#94A3B8;">Email</td><td>${params.contactEmail}</td></tr>
+       <tr><td style="padding:4px 0;color:#94A3B8;">Company</td><td>${params.companyName}</td></tr>
+       ${params.companyWebsite ? `<tr><td style="padding:4px 0;color:#94A3B8;">Website</td><td>${params.companyWebsite}</td></tr>` : ""}
+       ${params.eventName ? `<tr><td style="padding:4px 0;color:#94A3B8;">Event</td><td>${params.eventName}</td></tr>` : ""}
+       ${params.expectedUsers ? `<tr><td style="padding:4px 0;color:#94A3B8;">Expected users</td><td>${params.expectedUsers}</td></tr>` : ""}
+       ${params.crmSystem ? `<tr><td style="padding:4px 0;color:#94A3B8;">CRM system</td><td>${params.crmSystem}</td></tr>` : ""}
+     </table>
+     ${params.useCase ? `<p style="margin-top:12px;"><strong>Use case:</strong><br/>${params.useCase}</p>` : ""}
+     ${params.message ? `<p><strong>Message:</strong><br/>${params.message}</p>` : ""}
+     ${button("Review Request", params.reviewUrl)}`,
+    `New access request from ${params.contactName} (${params.contactEmail}) at ${params.companyName}.\n\nReview: ${params.reviewUrl}`
+  );
+  return {
+    to: params.to,
+    subject: `New Trade Show Revenue Agent access request — ${params.companyName}`,
+    html,
+    text,
+  };
+}
+
+export function accessRequestApprovedEmail(params: {
+  to: string;
+  contactName: string;
+  companyName: string;
+  inviteUrl: string;
+}): EmailMessage {
+  const firstName = params.contactName.split(" ")[0];
+  const { html, text } = wrap(
+    `<p>Hi ${firstName},</p>
+     <p>Great news — your access request for <strong>Trade Show Revenue Agent</strong> has been approved!</p>
+     <p>Your workspace for <strong>${params.companyName}</strong> is ready. Click below to set your password and log in.</p>
+     ${button("Activate Your Workspace", params.inviteUrl)}
+     <p style="color:#94A3B8;font-size:12px;margin-top:16px;">This invitation link expires in 7 days.</p>`,
+    `Hi ${firstName},\n\nYour access request has been approved!\n\nActivate your workspace for ${params.companyName}: ${params.inviteUrl}\n\nThis link expires in 7 days.`
+  );
+  return {
+    to: params.to,
+    subject: "Your Trade Show Revenue Agent workspace is ready",
+    html,
+    text,
+  };
+}
+
+export function accessRequestRejectedEmail(params: {
+  to: string;
+  contactName: string;
+  companyName: string;
+  reason?: string;
+}): EmailMessage {
+  const firstName = params.contactName.split(" ")[0];
+  const { html, text } = wrap(
+    `<p>Hi ${firstName},</p>
+     <p>Thank you for your interest in Trade Show Revenue Agent.</p>
+     <p>Unfortunately, we are unable to approve your access request for <strong>${params.companyName}</strong> at this time.</p>
+     ${params.reason ? `<p style="background:#F8FAFC;border-left:3px solid #CBD5E1;padding:10px 14px;border-radius:6px;color:#475569;">${params.reason}</p>` : ""}
+     <p>If you have questions, please contact us at <a href="mailto:info@gtmtechsol.com" style="color:${BRAND_BLUE};">info@gtmtechsol.com</a>.</p>`,
+    `Hi ${firstName},\n\nWe were unable to approve your access request for ${params.companyName} at this time.${params.reason ? `\n\nReason: ${params.reason}` : ""}\n\nFor questions: info@gtmtechsol.com`
+  );
+  return {
+    to: params.to,
+    subject: "Update on your Trade Show Revenue Agent access request",
+    html,
+    text,
+  };
+}
+
 export function accountSuspendedEmail(params: { to: string; firstName: string; tenantName: string; reason?: string }): EmailMessage {
   const { html, text } = wrap(
     `<p>Hi ${params.firstName},</p>
