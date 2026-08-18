@@ -44,7 +44,7 @@ If you're a new human developer, read in this order:
 | [code-inspection-report.md](code-inspection-report.md) | Codebase health scan, classified by severity |
 | [CURRENT-KNOWN-ISSUES.md](CURRENT-KNOWN-ISSUES.md) | **Live operational issues** — severity/impact/workaround/next-step, refreshed 2026-08-18 |
 | [TECHNICAL-DEBT.md](TECHNICAL-DEBT.md) | **Code-quality debt**, Critical/High/Medium/Low, refreshed 2026-08-18 |
-| [RELEASE-14-ICP-PLAN.md](RELEASE-14-ICP-PLAN.md) | Next planned release — configurable ICP, current-state assessment + phased plan |
+| [RELEASE-14-ICP-PLAN.md](RELEASE-14-ICP-PLAN.md) | Retired — see the file itself for where to read instead |
 | [CHANGELOG.md](CHANGELOG.md) | Release-by-release changelog |
 
 ### Supplementary reports (point-in-time, Release 13.7–13.8 work)

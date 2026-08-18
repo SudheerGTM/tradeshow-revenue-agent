@@ -2,7 +2,7 @@
 
 All notable changes to Trade Show Revenue Agent, release by release. Dates are approximate (derived from commit history, not always exact).
 
-> **Note added 2026-08-18:** Releases 13.7, 13.7.1, and 13.8 below shipped on branch `claude/priceless-keller-10439f`, which was never merged into `main` — `main` still only reflects through 13.6. Production has been running this branch's code since 2026-06-27. See [PROJECT-HANDOFF.md](../PROJECT-HANDOFF.md) for the full story.
+> **Note added 2026-08-18:** Releases 13.7, 13.7.1, and 13.8 below shipped on branch `claude/priceless-keller-10439f`. That branch has since been reconciled into `main` via merge (`0972810`) — both are now identical. Production, however, is confirmed (live SSH) still running `be05540`, the pre-reconciliation tip of that branch — it has R13.8 but not the S3/Transcribe fix restored by the merge, nor R14.1/R14.2. See [PROJECT-HANDOFF.md](../PROJECT-HANDOFF.md) for the full story.
 
 ## Release 13.8 — Controlled Tenant Self-Registration & Provisioning
 
@@ -12,7 +12,7 @@ All notable changes to Trade Show Revenue Agent, release by release. Dates are a
 
 **Breaking changes:** None.
 
-**Known issues at release:** Whether this release actually reached production is unconfirmed as of the 2026-08-18 documentation session — see `docs/CURRENT-KNOWN-ISSUES.md` #2.
+**Known issues at release:** Confirmed deployed to production via live SSH (2026-08-18) — `tradeshow-agent:be05540` running, `/request-access` present in the compiled build. That same check revealed production is separately missing the S3/Transcribe instance-role fix from a later merge — see `docs/CURRENT-KNOWN-ISSUES.md` #1.
 
 ---
 

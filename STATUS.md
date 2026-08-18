@@ -2,13 +2,14 @@
 
 > **Read [`PROJECT-HANDOFF.md`](PROJECT-HANDOFF.md) first**, not this file — it's now the primary "current state" document. This file is the lighter-weight operational snapshot on top of it; if the two ever disagree, `PROJECT-HANDOFF.md` wins (it's newer).
 
-Last updated: 2026-08-18 (branch reconciliation).
+Last updated: 2026-08-18 (R14.2 — Configurable ICP Foundation implemented).
 
 ## Current state — read this first
 
+- **R14.2 (Configurable ICP Foundation) is implemented, tested, and NOT yet deployed to production.** New table `icp_profiles` + nullable `events.icp_profile_id`, resolver at `src/lib/icp/icp-resolver.ts`, and a fix for a real duplicate-logic bug (`CompanyIntelTab.tsx` and `lead-scoring.ts` had two independently-drifted hardcoded industry keyword lists — now one shared function). Migration `drizzle/0016_icp_profiles.sql` has **not** been applied to production RDS — see [docs/ICP-ARCHITECTURE.md](docs/ICP-ARCHITECTURE.md) for the migration plan, which needs separate explicit approval before running. **Per the R14.2 stop-gate: do not proceed to the ICP Admin UI or wire ICP context into any agent without further approval.**
 - **`main` and `claude/priceless-keller-10439f` have just been reconciled** via a real merge (not a reset/force-push) — this branch now contains everything from both histories. See "What was just fixed" below for why this mattered more than a routine cleanup.
 - **Production is reachable:** https://tradeshow-agent.gtmtechsol.ai returned `307` (redirect to `/dashboard`, normal unauthenticated behavior) when checked this session. A full authenticated smoke test and a live SSH check of the deployed commit were **not** performed this session.
-- **Best available evidence on deployed commit:** production was directly confirmed (via container inspection, `docs/pre-demo-hardening-report.md`) running commit `7e2376c` as of 2026-06-29 22:37. Whether Release 13.8 (`be05540`) is live in production is **unconfirmed** — verify before assuming `/request-access` is reachable on the real domain.
+- **Deployed commit CONFIRMED via live SSH (2026-08-18):** production runs exactly `be05540` (Release 13.8) — `docker ps` shows `tradeshow-agent:be05540`, and `/request-access`'s compiled page is present in the container. **But `be05540` predates the `main` reconciliation merge (`0972810`)** — direct inspection of the compiled S3Client/TranscribeClient chunks confirms production is running the OLD, buggy unconditional-credentials pattern, not the fixed one. Business-card/voice-note uploads are very likely broken in production right now. See issue #1 in `docs/CURRENT-KNOWN-ISSUES.md`.
 - **RDS:** `tradeshow-agent-prod.cnec08ekae5z.eu-central-1.rds.amazonaws.com`, db name `tradeshow`, user `tsadmin`. Credentials in AWS Secrets Manager (`tradeshow-agent/prod`) — `aws secretsmanager get-secret-value --secret-id tradeshow-agent/prod` if needed; don't rely on `/tmp/*.txt` caches persisting across sessions. SSH key: `~/.ssh/tradeshow-agent-key.pem`.
 - **`npm run build` is clean** (verified this session — one harmless Turbopack workspace-root warning, no errors).
 - **`npm run lint`: 36 errors / 22 warnings** (verified fresh this session — pre-existing React-hooks-rule findings, none block the build).
@@ -45,7 +46,7 @@ Seeded test users (`Password123!` for all): `admin@platform.com` (platform_admin
 
 ## Release history
 
-See `docs/18-release-history.md` and `docs/CHANGELOG.md`, plus `PROJECT-HANDOFF.md` §3 for the fuller picture including R13.7/13.7.1/13.8. Short version: R1–R12 built the core lead pipeline, R13 added the Agent Orchestrator, R13.5 added Quick Capture, R13.6 added the full IAM overhaul, R13.7 added engineering stabilization + the tenant-subdomain auth foundation, R13.7.1 added workflow idempotency/cost control, R13.8 added tenant self-registration + provisioning. Currently at **13.8** in code; production deployment of 13.8 specifically is unconfirmed.
+See `docs/18-release-history.md` and `docs/CHANGELOG.md`, plus `PROJECT-HANDOFF.md` §3 for the fuller picture including R13.7/13.7.1/13.8. Short version: R1–R12 built the core lead pipeline, R13 added the Agent Orchestrator, R13.5 added Quick Capture, R13.6 added the full IAM overhaul, R13.7 added engineering stabilization + the tenant-subdomain auth foundation, R13.7.1 added workflow idempotency/cost control, R13.8 added tenant self-registration + provisioning. Currently at **13.8** in production (confirmed via live SSH) — but production is missing the S3/Transcribe fix restored in the later `main` reconciliation merge (`0972810`), which has not been deployed yet.
 
 ## Guardrails that matter (don't relax these without being asked)
 
@@ -63,8 +64,8 @@ Full detail in `PROJECT-HANDOFF.md` §9, `docs/07-authentication-security.md`, a
 ## Known issues / things to watch
 
 See **`docs/CURRENT-KNOWN-ISSUES.md`** for the full severity/impact/workaround/next-step list. Highlights:
-1. **The S3/Transcribe instance-role fix had silently regressed in production since 2026-06-27** — just restored via this merge; needs live verification + redeploy as a priority (see "What was just fixed" above).
-2. **Release 13.8's production-deployment status is unconfirmed** — verify via SSH before assuming `/request-access` is live.
+1. **CONFIRMED (live SSH): production is missing the S3/Transcribe instance-role fix** — restored in the reconciliation merge (`0972810`) but production still runs `be05540`, from before that merge. Business-card/voice-note uploads are very likely broken right now. **Top-priority redeploy candidate**, pending your approval.
+2. **Release 13.8 IS deployed to production** — confirmed, no longer an open question.
 3. **Dashboard N+1 query bug** (`src/app/(app)/dashboard/page.tsx`) — High severity, not yet fixed.
 4. **HubSpot credentials blank in production** as of the last check.
 5. **Wildcard DNS rollout paused** at Phase 0 of 4 — explicitly gated, not a bug.
@@ -77,4 +78,4 @@ Email sending to leads (by design), real AWS Step Functions/Bedrock AgentCore sw
 
 ## Natural next step
 
-**Highest priority: verify the restored S3/Transcribe fix and redeploy to production** — this branch is now the correct code, but production itself hasn't been redeployed since this merge. Second: **Release 14 — Configurable ICP.** A current-state assessment and phased plan already exists at `docs/RELEASE-14-ICP-PLAN.md` — read it, verify it against the code yourself, and get explicit user sign-off on scope before writing any code.
+**Highest priority: verify the restored S3/Transcribe fix and redeploy to production** — this branch is now the correct code, but production itself hasn't been redeployed since the earlier merge in this session. Second: apply R14.2's migration (`drizzle/0016_icp_profiles.sql`) and deploy its code to production — not done yet, needs separate explicit approval per `docs/ICP-ARCHITECTURE.md`'s migration plan. Third: **decide on R14.3+** — ICP Admin UI, Conversation Intelligence integration, Lead Scoring integration, Follow-Up integration are all explicitly gated behind further approval (R14.2's stop gate) and have not been started.

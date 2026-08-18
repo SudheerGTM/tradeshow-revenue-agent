@@ -1,10 +1,10 @@
 # Trade Show Revenue Agent — Project Handoff
 
-> **START HERE** — This file contains the current operational state of the Trade Show Revenue Agent. Read this before modifying code. Then read [`/docs/README.md`](docs/README.md) for depth on any specific topic. Do not rely on any prior chat conversation — this document and the code are the source of truth. Compiled 2026-08-18 by direct inspection of the repository, git history, and (where accessible) production; not copied forward from stale docs. See [§ Validation & Contradictions Resolved](#validation--contradictions-resolved) for what was found wrong in prior documentation and fixed during this pass.
+> **START HERE** — This file contains the current operational state of the Trade Show Revenue Agent. Read this before modifying code. Then read [`/docs/README.md`](docs/README.md) for depth on any specific topic. Do not rely on any prior chat conversation — this document and the code are the source of truth. Originally compiled 2026-08-18 by direct inspection of the repository, git history, and (where accessible) production; **updated same day** after `main` and `claude/priceless-keller-10439f` were reconciled via merge and after live SSH verification of the production container. See [§ Validation & Contradictions Resolved](#validation--contradictions-resolved) for the full history of what was found wrong and fixed.
 
-## ⚠️ Read this before anything else: you are (correctly) on the wrong-sounding branch
+## ⚠️ Read this first: `main` and `claude/priceless-keller-10439f` are now identical — but production is still running older code than both
 
-**`main` is stale. The branch this document lives on, `claude/priceless-keller-10439f`, is the one that actually matches production.** This is the single most important fact in this handoff — see [§ Git / Worktree State](#git--worktree-state) for the full evidence chain. If you find yourself on `main` instead, stop and re-read that section before doing anything else.
+`main` and `claude/priceless-keller-10439f` were reconciled via a real merge (commit `0972810`) — they are the same commit, locally and on GitHub, as of this update. **The branch divergence problem is resolved.** What is *not* resolved: production is confirmed (via live SSH, not inference) still running commit `be05540` — the tip of `claude/priceless-keller-10439f` *before* that reconciliation merge — which means **production is currently missing the S3/Transcribe instance-role credentials fix**, confirmed by inspecting the actual compiled bundle on the running container. This is an active, live bug, not a documentation artifact — see [§2](#2-current-production-state) and [CURRENT-KNOWN-ISSUES.md](docs/CURRENT-KNOWN-ISSUES.md) #1.
 
 ---
 
@@ -27,11 +27,11 @@ Capabilities: lead capture (4 entry points) → conversation intelligence (Gemin
 | **S3** | One bucket, three prefixes (`voice-notes/`, `business-cards/`, `avatars/`) — see [10-aws-infrastructure.md](docs/10-aws-infrastructure.md) |
 | **SES** | Sandbox mode — only `info@gtmtechsol.com` can receive real email until AWS approves production access (request pending, outside this project's control) |
 | **Transcribe** | Configured correctly at the code/IAM level; **this AWS account is not subscribed to the service** — every job fails with `SubscriptionRequiredException`. Account-level gap, not fixable by code. |
-| **Container** | Docker, standalone Next.js build, behind Nginx + Let's Encrypt |
-| **Current production commit** | **Not independently re-verified this session** (no SSH access exercised for a live check — see below). Best available evidence: production was confirmed running commit `7e2376c` as of 2026-06-29 22:37 (`docs/pre-demo-hardening-report.md`, which observed the running container directly). Whether Release 13.8 (`be05540`, committed 2026-06-30 09:11, the tip of this branch) is deployed is **unconfirmed** — see [CURRENT-KNOWN-ISSUES.md](docs/CURRENT-KNOWN-ISSUES.md) #2. |
-| **Current branch HEAD** (this doc's branch, `claude/priceless-keller-10439f`) | `be05540` |
-| **`main` HEAD** | `cbfc28f` — **16 commits behind this branch**, does not reflect production |
-| **Whether production matches this branch** | Matches through at least `7e2376c`; `be05540` (Release 13.8) unconfirmed. Does **not** match `main`. |
+| **Container** | Docker, standalone Next.js build, behind Nginx + Let's Encrypt. **Confirmed live via SSH:** `tradeshow-agent:be05540`, up 5 hours (at time of check) |
+| **Current production commit** | **Confirmed via live SSH** (`docker ps`, plus direct inspection of compiled `.next/server/chunks/*.js`): `be05540` — the Release 13.8 commit, tip of `claude/priceless-keller-10439f` *before* its reconciliation merge with `main`. `/request-access` (R13.8) confirmed present in the deployed build. |
+| **S3/Transcribe instance-role fix (`06df6d8`)** | **Confirmed MISSING from production**, live, via direct inspection of the compiled S3Client/TranscribeClient chunks — they contain the old unconditional `credentials:{accessKeyId:process.env.AWS_ACCESS_KEY_ID,...}` pattern, not the fixed conditional one. **Business-card and voice-note uploads are very likely broken in production right now.** This is a confirmed live incident, not a hypothesis — treat as the top-priority action item, ahead of any ICP work. Not fixed by this session (deploying to production requires separate explicit approval — this is a real, high-blast-radius action). |
+| **Current branch HEAD** (`main` and `claude/priceless-keller-10439f`, now identical) | `0972810` — **not yet deployed to production** |
+| **Whether production matches `main`/this branch** | **No.** Production (`be05540`) is missing everything from the reconciliation merge onward, including the restored S3/Transcribe fix and (once committed) this session's R14.1/R14.2 documentation and code. |
 | **Build status** | `npm run build` — clean, verified this session (harmless workspace-root Turbopack warning only, no errors) |
 | **Lint status** | `npm run lint` — 36 errors / 22 warnings, verified fresh this session (all pre-existing React-hooks-rule findings; does not block build). A stale prior doc claimed ~72/44 — see [CURRENT-KNOWN-ISSUES.md](docs/CURRENT-KNOWN-ISSUES.md) #13. |
 | **Known environment limitations** | t3.small build-time OOM risk (swap mitigates it — see [09-deployment-guide.md](docs/09-deployment-guide.md)); SES sandbox; Transcribe unsubscribed; HubSpot credentials blank in production as of the last confirmed check (2026-06-29) |
@@ -48,8 +48,9 @@ Secrets live in AWS Secrets Manager (`tradeshow-agent/prod`) — never reference
 | R13.6 | IAM overhaul — invitations, password reset, lockout, event access | Complete |
 | R13.7 | Engineering stabilization — login/UI polish, **tenant-scoped subdomain authentication (Phase 0 of wildcard rollout)** | Complete, deployed |
 | R13.7.1 | Workflow idempotency (no duplicate CRM-sync jobs/follow-up drafts on re-run), enrichment cost control (skip cached Apollo calls), CRM-sync graceful failure when HubSpot isn't connected | Complete, deployed |
-| R13.8 | Controlled tenant self-registration — public `/request-access` form → platform_admin approval → automatic `Tenant Provisioning Agent` (tenant + default event + admin invitation) | Complete in code; **production deployment unconfirmed** |
-| **R14** | **Configurable ICP Foundation** — not started | **Planned next** — see [§19](#19-release-14--configurable-icp) and [docs/RELEASE-14-ICP-PLAN.md](docs/RELEASE-14-ICP-PLAN.md) |
+| R13.8 | Controlled tenant self-registration — public `/request-access` form → platform_admin approval → automatic `Tenant Provisioning Agent` (tenant + default event + admin invitation) | Complete in code; **confirmed deployed to production** (live SSH, 2026-08-18) |
+| R14.1 | Configurable ICP — current-state assessment | Complete, approved with conditions |
+| **R14.2** | **Configurable ICP Foundation** — schema, resolver, duplicate-fit-logic fix | **Complete, tested locally; NOT deployed** — see [§19](#19-release-14--configurable-icp) and [docs/ICP-ARCHITECTURE.md](docs/ICP-ARCHITECTURE.md) |
 
 Wildcard subdomain rollout (a cross-cutting effort spanning R13.7 through pre-R14 work, not itself numbered as a release) is **mid-flight**: Phase 0 (tenant-scoped auth) is done and deployed; Phases 1–3 (wildcard SSL, Nginx config, GoDaddy DNS) are prepared but explicitly not executed, pending separate approval and DNS access this session doesn't have. See `docs/wildcard-rollout-runbook.md`.
 
@@ -180,7 +181,7 @@ Seed data (`npm run db:seed`, password `Password123!` for all): `admin@platform.
 
 ## 14. Known Issues
 
-See **[docs/CURRENT-KNOWN-ISSUES.md](docs/CURRENT-KNOWN-ISSUES.md)** — severity/impact/workaround/next-step for every live operational issue, including the branch divergence, the unconfirmed R13.8 deploy, HubSpot/Transcribe/SES gaps, the dashboard N+1 query, and the corrected lint count.
+See **[docs/CURRENT-KNOWN-ISSUES.md](docs/CURRENT-KNOWN-ISSUES.md)** — severity/impact/workaround/next-step for every live operational issue, including the confirmed-missing S3/Transcribe fix in production (now the top item), HubSpot/Transcribe/SES gaps, the dashboard N+1 query, and the corrected lint count.
 
 ## 15. Technical Debt
 
@@ -200,9 +201,14 @@ Lead capture (manual/QR/business-card/voice) → Conversation Intelligence → E
 
 ## 19. Release 14 — Configurable ICP
 
-**This is the next planned work. Do not begin implementation from this handoff alone** — a full current-state assessment and phased plan already exists at **[docs/RELEASE-14-ICP-PLAN.md](docs/RELEASE-14-ICP-PLAN.md)**, produced during this same documentation session, verified against actual code (the hardcoded logistics/supply-chain industry bonus in `src/lib/agents/lead-scoring.ts` is the concrete evidence of the current fixed-ICP assumption). Read it, then get explicit user sign-off on the R14.2 data model before writing any code.
+**Status: R14.1 (assessment) and R14.2 (foundation) are both complete. Stop-gated before R14.3+.**
 
-**Guiding principle:** One Trade Show Agent → Multiple Configurable ICPs (the R14 goal). **Not** Multiple Agents → Multiple ICPs (explicitly deferred, unscoped, do not build toward it now).
+- **R14.1** — current-state assessment: **[docs/RELEASE-14-CONFIGURABLE-ICP.md](docs/RELEASE-14-CONFIGURABLE-ICP.md)**. Found four hardcoded-ICP locations by direct code inspection (not one, as an earlier draft assumed) — most notably that `src/components/lead-detail/CompanyIntelTab.tsx` had its own independent, already-diverged hardcoded industry-keyword list, separate from `src/lib/agents/lead-scoring.ts`'s. Approved by the user with two conditions: fix the `CompanyIntelTab.tsx` duplication as part of R14.2, and keep scoring weights fixed (not admin-editable) for now.
+- **R14.2** — foundation, implemented: **[docs/ICP-ARCHITECTURE.md](docs/ICP-ARCHITECTURE.md)**. New `icp_profiles` table + nullable `events.icp_profile_id`, a resolver (`src/lib/icp/icp-resolver.ts`), and the `CompanyIntelTab.tsx`/`lead-scoring.ts` duplicate-logic fix (both now share `src/lib/icp/fit.ts`). Verified against an isolated test database (17/17 checks passed) and a live browser check. **Not yet committed or deployed to production** as of this update — see [§22](#22-git--worktree-state).
+- **The earlier, less-detailed `docs/RELEASE-14-ICP-PLAN.md` is superseded** — it's now a redirect stub, not a source of truth.
+- **STOP gate (per the R14.2 approval brief):** do not proceed to the ICP Admin UI, Conversation Intelligence integration, Lead Scoring integration, or Follow-Up integration without further explicit approval.
+
+**Guiding principle (unchanged):** One Trade Show Agent → Multiple Configurable ICPs. **Not** Multiple Agents → Multiple ICPs (explicitly deferred, unscoped, do not build toward it now).
 
 ## 20. Development Guardrails for the Next Claude Session
 
@@ -225,18 +231,18 @@ For every new release: **Inspect → Plan → User Approval → Implement → Te
 
 ## 22. Git / Worktree State
 
-**This is the most important operational fact in this document.**
+**Update: `main` and `claude/priceless-keller-10439f` were reconciled the same day this document was first written — see the merge row below.** The branch-divergence problem described in the original version of this section is resolved; what remains open is that production hasn't caught up to either of them yet.
 
 | Branch | HEAD | Relationship to `main` | Relationship to production |
 |---|---|---|---|
-| `main` | `cbfc28f` | — | **Stale** — was current only briefly after `06df6d8`; superseded by the branch below within hours |
-| **`claude/priceless-keller-10439f`** (this branch) | `be05540` | **16 commits ahead** (R13.7, R13.7.1, R13.8) | Confirmed running in production through at least `7e2376c`; `be05540` unconfirmed |
-| `claude/sharp-mahavira-d7d16a` | `6ab19aa` | 1 commit ahead (production-deployment scaffolding, since superseded) | Superseded — its content is already incorporated further up the commit graph |
-| `claude/trade-show-revenue-agent-5fc744` | (was `cbfc28f`, identical to `main`) | This documentation session's original branch, cut from `main` before this divergence was discovered | N/A — this worktree was switched to `claude/priceless-keller-10439f` mid-session once the divergence was found; see below |
+| `main` | `0972810` | Identical to `claude/priceless-keller-10439f` | Ahead of production — see below |
+| **`claude/priceless-keller-10439f`** (this branch) | `0972810` | Identical to `main` | Ahead of production — see below |
+| `claude/sharp-mahavira-d7d16a` | `6ab19aa` | Superseded, fully contained in the merge history above | Superseded |
+| `claude/trade-show-revenue-agent-5fc744` | `cbfc28f` (stale, unused) | This documentation session's original throwaway branch, abandoned once the divergence was found | N/A |
 
-**How this was discovered and resolved this session:** this worktree was originally checked out on a fresh branch cut from `main` (`claude/trade-show-revenue-agent-5fc744`). Routine verification (`git log`, `git worktree list`, checking production against `main`) surfaced that `claude/priceless-keller-10439f` — a separate, already-`origin`-pushed branch — was 16 commits ahead and was what production actually ran, per that branch's own self-reported production-health docs. **The user was asked which branch to treat as authoritative and chose `claude/priceless-keller-10439f`**; this worktree was then switched (`git checkout claude/priceless-keller-10439f`) and all documentation in this pass was produced from that branch's actual code and docs.
+**How the divergence was discovered and resolved:** this worktree was originally checked out on a fresh branch cut from `main` (`claude/trade-show-revenue-agent-5fc744`). Routine verification (`git log`, `git worktree list`, checking production against `main`) surfaced that `claude/priceless-keller-10439f` was 16 commits ahead and was what production actually ran. The user chose `claude/priceless-keller-10439f` as authoritative; this worktree switched to it, and — after confirming `main`'s only unique commit (`06df6d8`, a real S3/Transcribe bug fix) was **not** present on that branch — a real 3-way merge (`0972810`, not a reset or force-push) combined both histories, restoring the fix. Both `origin/main` and `origin/claude/priceless-keller-10439f` were fast-forwarded to this merge commit and confirmed in sync.
 
-**What's still unresolved:** `main` has not been updated. The next real decision point is whether/how to merge `claude/priceless-keller-10439f` into `main` — that's a substantive git operation on the primary branch and needs its own explicit approval; it was **not** done as part of this documentation-only session. Until it happens, **any session that starts from `main` will silently repeat this same mistake.** Whoever picks this up next should either complete that merge first, or start explicitly from `claude/priceless-keller-10439f` and say so.
+**What's still unresolved: production has not been redeployed since.** Live SSH verification (2026-08-18) confirmed production is running `be05540` — the tip of `claude/priceless-keller-10439f` *before* the reconciliation merge — meaning **the S3/Transcribe fix is confirmed absent from the running container's compiled code** (checked directly, not inferred). Deploying `0972810`+ to production is the top-priority next action, and requires separate explicit approval since it's a real production deploy, not a docs change.
 
 ## 23. Validation & Contradictions Resolved
 
@@ -252,6 +258,10 @@ Per this handoff task's own validation requirement — every claim below was che
 | `STATUS.md` (on `main`): "~72 lint errors / 44 warnings" | Fresh run this session: 36 errors / 22 warnings | Updated in [CURRENT-KNOWN-ISSUES.md](docs/CURRENT-KNOWN-ISSUES.md); treat as re-verify-don't-trust going forward |
 | This task's own spec, §5: example subdomain `xoxoday.tradefair-agent.gtmtechsol.ai` | The real root domain is `tradeshow-agent.gtmtechsol.ai`, not `tradefair-agent...`, and no tenant named `xoxoday` was found in seed data or docs | Treated the spec's example as illustrative only, not a literal claim to preserve |
 | Root `AGENTS.md`: "Read the relevant guide in `node_modules/next/dist/docs/`" | That directory does not exist in this repo's `node_modules` | Noted, not acted on further — nothing to read; the actual API surface (`proxy.ts` convention) was instead confirmed directly from the Next.js build output and working code |
+| This document (earlier version): "`main` is stale... 16 commits behind" | True when written; `main` and `claude/priceless-keller-10439f` were reconciled via merge (`0972810`) later the same day | Updated throughout this document — see [§22](#22-git--worktree-state) |
+| This document (earlier version): "Release 13.8 (`be05540`)... deployed is unconfirmed" | **Now confirmed via live SSH**: production runs exactly `be05540` | Updated in [§2](#2-current-production-state); also revealed production is missing the reconciliation merge's S3/Transcribe fix — confirmed live, not inferred |
+| `RELEASES.md` (earlier version): labeled R13.7 "(current)" | R13.8 had already shipped and production was confirmed running its commit | Updated to list R13.7 → R13.7.1 → R13.8 → R14.1 → R14.2 with R14.2 as current |
+| `docs/RELEASE-14-ICP-PLAN.md`: an earlier, less-detailed Release 14 draft (proposed admin-editable scoring weights, missed the `CompanyIntelTab.tsx` and Follow-Up-prompt hardcoding) | Superseded by a fresh code inspection in `docs/RELEASE-14-CONFIGURABLE-ICP.md`, which found 4 hardcoded locations (not 1) and led to the R14.2 approval decision to keep weights fixed for now | File trimmed to a redirect notice — see [§19](#19-release-14--configurable-icp) |
 
 ## 24. Documentation Index
 
@@ -264,7 +274,7 @@ See [docs/README.md](docs/README.md) for the full index. Recommended reading ord
 6. [06-ai-agent-architecture.md](docs/06-ai-agent-architecture.md)
 7. [10-aws-infrastructure.md](docs/10-aws-infrastructure.md) + [09-deployment-guide.md](docs/09-deployment-guide.md)
 8. [docs/CURRENT-KNOWN-ISSUES.md](docs/CURRENT-KNOWN-ISSUES.md) + [18-release-history.md](docs/18-release-history.md)
-9. [docs/RELEASE-14-ICP-PLAN.md](docs/RELEASE-14-ICP-PLAN.md)
+9. [docs/RELEASE-14-CONFIGURABLE-ICP.md](docs/RELEASE-14-CONFIGURABLE-ICP.md) (assessment) + [docs/ICP-ARCHITECTURE.md](docs/ICP-ARCHITECTURE.md) (what R14.2 actually built)
 
 ---
 

@@ -4,11 +4,11 @@ You're picking up **Trade Show Revenue Agent** — a multi-tenant SaaS that turn
 
 ## First, a critical fact about this repo
 
-**`main` is stale.** The branch you're most likely reading this on, `claude/priceless-keller-10439f`, is the one that actually matches what's deployed to production — it's 16 commits ahead of `main` (Releases 13.7, 13.7.1, and 13.8). If you're on `main` instead, or unsure which branch you're on, **stop and run `git branch --show-current` and `git log --oneline -5` before doing anything else.** Full evidence: [PROJECT-HANDOFF.md § Git / Worktree State](PROJECT-HANDOFF.md#22-git--worktree-state).
+**`main` and `claude/priceless-keller-10439f` are now identical** (merge commit `0972810`) — the branch-divergence problem that used to be the top item here is resolved. **What's still true and urgent: production is behind both of them.** Confirmed via live SSH: production runs `be05540` (has Release 13.8, does NOT have the S3/Transcribe fix from the reconciliation merge — business-card/voice-note uploads are very likely broken right now). Full evidence: [PROJECT-HANDOFF.md § Git / Worktree State](PROJECT-HANDOFF.md#22-git--worktree-state) and §2 (Current Production State).
 
 ## What's live
 
-https://tradeshow-agent.gtmtechsol.ai — a single EC2 instance + RDS Postgres, currently Release 13.8 (tenant self-registration) in code, though the exact deployed commit needs re-verification (see the handoff doc). Full IAM, 8 AI/business-logic agents, HubSpot CRM sync gated behind human approval, and a not-yet-publicly-live wildcard-subdomain multi-tenant auth system.
+https://tradeshow-agent.gtmtechsol.ai — a single EC2 instance + RDS Postgres, confirmed via live SSH running Release 13.8 (`be05540`). **That build is missing a real S3/Transcribe bug fix restored in a later merge — deploying the fix is the single highest-priority action item**, ahead of any Release 14 work (see the handoff doc). Full IAM, 8 AI/business-logic agents, HubSpot CRM sync gated behind human approval, and a not-yet-publicly-live wildcard-subdomain multi-tenant auth system.
 
 ## Where to read
 
@@ -19,12 +19,14 @@ https://tradeshow-agent.gtmtechsol.ai — a single EC2 instance + RDS Postgres, 
 ## What not to change without asking first
 
 - The guardrails in [PROJECT-HANDOFF.md §9](PROJECT-HANDOFF.md#9-agent-guardrails) — no automatic CRM sync, no automatic tenant provisioning, no send capability for follow-ups, no AI-set numbers, no bypassing tenant isolation.
-- The `main` vs. `claude/priceless-keller-10439f` situation — don't merge, don't pick a branch unilaterally on a future session; the user already made this call once this session, but a merge into `main` itself hasn't happened yet and is a decision on its own.
+- **Don't deploy to production** without explicit approval, even though the S3/Transcribe fix redeploy is urgent — it's a real production action, not something to do unilaterally.
 - Wildcard DNS (Phase 3 of the subdomain rollout) — explicitly gated pending separate approval and GoDaddy access; don't proceed on it just because the SSL/Nginx steps are "prepared."
+- Release 14 beyond R14.2 — **stop-gated.** R14.1 (assessment) and R14.2 (ICP data model/resolver/duplicate-fit-logic fix) are done and tested locally, but not committed or deployed as of the last update. Do not proceed to the ICP Admin UI, Conversation Intelligence integration, Lead Scoring integration, or Follow-Up integration without further explicit approval — see [docs/ICP-ARCHITECTURE.md](docs/ICP-ARCHITECTURE.md).
 
 ## What's next
 
-**Release 14 — Configurable ICP.** The app currently assumes one fixed vertical (logistics/supply-chain) in its scoring logic. A full current-state assessment and phased plan already exists: [docs/RELEASE-14-ICP-PLAN.md](docs/RELEASE-14-ICP-PLAN.md).
+1. **Deploy the S3/Transcribe fix to production** — the single most urgent item, pending your approval.
+2. **Release 14** — R14.1 and R14.2 are complete: [docs/RELEASE-14-CONFIGURABLE-ICP.md](docs/RELEASE-14-CONFIGURABLE-ICP.md) (assessment) and [docs/ICP-ARCHITECTURE.md](docs/ICP-ARCHITECTURE.md) (what R14.2 built). R14.3+ (Admin UI, agent integration) needs explicit approval before starting — do not assume it from this file alone. (The older `docs/RELEASE-14-ICP-PLAN.md` is retired — don't read it as current.)
 
 ## Checks to run first
 
@@ -35,5 +37,3 @@ git log --oneline -10
 git worktree list
 npm install && npm run build
 ```
-
-> Do not begin Release 14 implementation until you have inspected the current repository and provided an R14.1 ICP current-state assessment for user approval — one already exists at `docs/RELEASE-14-ICP-PLAN.md`, but confirm it against the code yourself before acting on it, and get the user's explicit sign-off on scope before writing any code.
