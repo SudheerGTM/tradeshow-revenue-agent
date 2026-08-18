@@ -2,6 +2,7 @@
 
 import { Target } from "lucide-react";
 import { EnrichmentPanel } from "@/components/EnrichmentPanel";
+import { deriveDefaultIndustryFit } from "@/lib/icp/fit";
 import type { CompanyEnrichmentSummary, LeadScoreSummary } from "./types";
 
 interface Props {
@@ -57,10 +58,14 @@ function FitRow({ label, fit }: { label: string; fit: FitLevel }) {
 }
 
 function deriveICPFit(company: CompanyEnrichmentSummary | null, score: LeadScoreSummary | null) {
-  const industry = (company?.industry ?? "").toLowerCase();
-  const logisticsKeywords = ["logistics", "freight", "transport", "supply chain", "shipping", "warehous"];
-  const industryFit: FitLevel = !company?.industry ? "Unknown"
-    : logisticsKeywords.some(k => industry.includes(k)) ? "Strong" : "Moderate";
+  // Release 14.2: this used to have its own independent hardcoded keyword
+  // list here, separate from (and already slightly diverged from) the one
+  // Lead Scoring used for the actual Company Fit bonus. Both now share
+  // src/lib/icp/fit.ts as the single source of truth — see
+  // docs/RELEASE-14-CONFIGURABLE-ICP.md § A3/E.
+  const defaultFit = deriveDefaultIndustryFit(company?.industry);
+  const industryFit: FitLevel =
+    defaultFit === "unknown" ? "Unknown" : defaultFit === "strong" ? "Strong" : "Moderate";
 
   const empCount = parseInt((company?.employeeCount ?? "").replace(/,/g, ""), 10);
   const sizeFit: FitLevel = !company?.employeeCount ? "Unknown"

@@ -10,6 +10,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { db, schema } from "@/db";
 import { eq, and, desc } from "drizzle-orm";
 import { logAudit } from "@/lib/audit";
+import { matchesDefaultTargetIndustry } from "@/lib/icp/fit";
 import type { ScoreClassification } from "@/db/schema";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -282,9 +283,10 @@ export function calculateLeadScore(inputs: ScoringInputs): ScoreBreakdown {
     else if (empCount >= 50) companyFitScore = 12;
     else companyFitScore = 8;
 
-    // Logistics industry bonus
-    const industry = (inputs.company.industry ?? "").toLowerCase();
-    if (industry.includes("logistics") || industry.includes("transport") || industry.includes("supply chain") || industry.includes("freight")) {
+    // Default target-industry bonus — shared with CompanyIntelTab's "ICP
+    // Match" display via src/lib/icp/fit.ts (Release 14.2, see
+    // docs/RELEASE-14-CONFIGURABLE-ICP.md § A3/E). Not yet ICP-configurable.
+    if (matchesDefaultTargetIndustry(inputs.company.industry)) {
       companyFitScore = Math.min(25, companyFitScore + 5);
     }
   } else if (inputs.lead.companyName) {

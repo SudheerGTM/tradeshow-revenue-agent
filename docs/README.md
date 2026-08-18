@@ -44,6 +44,8 @@ If you're a new human developer, read in this order:
 | [code-inspection-report.md](code-inspection-report.md) | Codebase health scan, classified by severity |
 | [CURRENT-KNOWN-ISSUES.md](CURRENT-KNOWN-ISSUES.md) | **Live operational issues** — severity/impact/workaround/next-step, refreshed 2026-08-18 |
 | [TECHNICAL-DEBT.md](TECHNICAL-DEBT.md) | **Code-quality debt**, Critical/High/Medium/Low, refreshed 2026-08-18 |
+| [RELEASE-14-CONFIGURABLE-ICP.md](RELEASE-14-CONFIGURABLE-ICP.md) | R14.1 current-state assessment (A–J structure) + R14.2 completion note. Read [ICP-ARCHITECTURE.md](ICP-ARCHITECTURE.md) for current implementation detail. |
+| [ICP-ARCHITECTURE.md](ICP-ARCHITECTURE.md) | **Current** — what R14.2 actually built: data model, resolver, shared fit-logic fix, tenant isolation, production migration plan |
 | [RELEASE-14-ICP-PLAN.md](RELEASE-14-ICP-PLAN.md) | Retired — see the file itself for where to read instead |
 | [CHANGELOG.md](CHANGELOG.md) | Release-by-release changelog |
 

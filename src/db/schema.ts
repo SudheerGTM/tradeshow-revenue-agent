@@ -12,6 +12,7 @@ import {
   doublePrecision,
   numeric,
   integer,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 
 // ─── Enums ────────────────────────────────────────────────────────────────────
@@ -182,12 +183,16 @@ export const events = pgTable(
     startDate: date("start_date"),
     endDate: date("end_date"),
     status: eventStatusEnum("status").notNull().default("upcoming"),
+    // Release 14.2 — nullable; null means "resolve the tenant's active default
+    // ICP profile instead" (see src/lib/icp/icp-resolver.ts).
+    icpProfileId: uuid("icp_profile_id").references((): AnyPgColumn => icpProfiles.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     index("events_tenant_idx").on(t.tenantId),
     index("events_slug_idx").on(t.tenantId, t.slug),
+    index("events_icp_profile_idx").on(t.icpProfileId),
   ]
 );
 
@@ -1049,3 +1054,39 @@ export const tenantAccessRequests = pgTable(
 export type TenantAccessRequest = typeof tenantAccessRequests.$inferSelect;
 export type NewTenantAccessRequest = typeof tenantAccessRequests.$inferInsert;
 export type AccessRequestStatus = "requested" | "under_review" | "approved" | "rejected" | "provisioned";
+
+// ─── ICP Profiles (Release 14.2) ───────────────────────────────────────────────
+//
+// configurationJson is validated against the Zod schema in src/lib/icp/schema.ts
+// before every write — the column itself is untyped jsonb, Zod is the actual
+// source of truth for its shape. See docs/RELEASE-14-CONFIGURABLE-ICP.md and
+// docs/ICP-ARCHITECTURE.md.
+
+export const icpStatusEnum = pgEnum("icp_status", ["draft", "active", "inactive"]);
+
+export const icpProfiles = pgTable(
+  "icp_profiles",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+
+    name: varchar("name", { length: 255 }).notNull(),
+    description: text("description"),
+    status: icpStatusEnum("status").notNull().default("draft"),
+    version: integer("version").notNull().default(1),
+    configurationJson: jsonb("configuration_json").notNull(),
+
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("icp_profiles_tenant_idx").on(t.tenantId),
+    index("icp_profiles_tenant_status_idx").on(t.tenantId, t.status),
+  ]
+);
+
+export type IcpProfile = typeof icpProfiles.$inferSelect;
+export type NewIcpProfile = typeof icpProfiles.$inferInsert;
+export type IcpStatus = "draft" | "active" | "inactive";

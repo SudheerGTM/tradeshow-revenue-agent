@@ -2,7 +2,19 @@
 
 All notable changes to Trade Show Revenue Agent, release by release. Dates are approximate (derived from commit history, not always exact).
 
-> **Note added 2026-08-18:** Releases 13.7, 13.7.1, and 13.8 below shipped on branch `claude/priceless-keller-10439f`. That branch has since been reconciled into `main` via merge (`0972810`) — both are now identical. Production, however, is confirmed (live SSH) still running `be05540`, the pre-reconciliation tip of that branch — it has R13.8 but not the S3/Transcribe fix restored by the merge, nor R14.1/R14.2. See [PROJECT-HANDOFF.md](../PROJECT-HANDOFF.md) for the full story.
+> **Note added 2026-08-18:** Releases 13.7, 13.7.1, and 13.8 below shipped on branch `claude/priceless-keller-10439f`. That branch has since been reconciled into `main` via merge (`0972810`), and the reconciled code (plus documentation fixes) has been deployed to and verified in production (`864f848`) — `main`, the branch, and production are all in sync as of this update. See [PROJECT-HANDOFF.md](../PROJECT-HANDOFF.md) for the full story.
+
+## Release 14.2 — Configurable ICP Foundation
+
+**Major features:** `icp_profiles` table (tenant-scoped, Zod-validated `configuration_json`), nullable `events.icp_profile_id`; `src/lib/icp/icp-resolver.ts` as the single ICP-reading entry point (`getICPProfile`, `getActiveICPForEvent`, `getICPConfiguration`, `getICPVersion`, `validateICPConfiguration`, `validateEventICPAssignment`); fixed a real duplicate-logic bug where `src/lib/agents/lead-scoring.ts` and `src/components/lead-detail/CompanyIntelTab.tsx` each independently hardcoded a slightly different logistics-industry keyword list — both now share `src/lib/icp/fit.ts`.
+
+**Database changes:** `0016_icp_profiles.sql` — new table `icp_profiles`, new enum `icp_status`, new nullable `events.icp_profile_id` column. Purely additive; no existing row modified. **Not yet applied to production** — see `docs/ICP-ARCHITECTURE.md` for the migration plan, gated on separate approval.
+
+**Breaking changes:** None. `getActiveICPForEvent()` returns `null` for every tenant today (zero ICP profiles exist anywhere yet) — every consumer's behavior is unchanged. Verified via a full migration-and-resolver test run against an isolated database, plus a live browser check of the refactored Company Intelligence tab.
+
+**Known issues at release:** No ICP Admin UI or API route exists yet — `events.icp_profile_id` can only be set via direct database access today. Scoring weights are present in the config schema but inert (not read by any scoring logic, not exposed in any UI) per the R14.2 approval decision. Explicitly stop-gated before R14.3 (Admin UI), R14.4 (Conversation Intelligence), R14.5 (Lead Scoring), R14.6 (Follow-Up) — none of that work has started.
+
+---
 
 ## Release 13.8 — Controlled Tenant Self-Registration & Provisioning
 
