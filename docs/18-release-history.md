@@ -19,12 +19,18 @@
 | R13.6 | IAM overhaul — email invitations, password reset (no more visible temp passwords), account lockout, 5-state user lifecycle, per-user event access, onboarding wizard, security/adoption dashboards | `0014` | **Yes** — admin "reset password" no longer returns a raw password; invited users have no `users` row until accepted | Yes |
 | — (Fix) | Production password drift on `admin@demo.com` — reset directly, cause not fully diagnosed | None | — | No |
 | — (Fix) | Restored missing Agent Orchestrator UI (Workflow tab, `/workflows`, `/agents`) to a branch that had diverged from `main` one commit early | None (cherry-pick, no schema change) | — | No |
+| R13.7 | Engineering stabilization — login/mobile UI polish; **tenant-scoped subdomain authentication** (`resolveTenantSlug()` correctly distinguishes the apex domain from a real tenant subdomain, `authorize()` enforces cross-tenant login rejection when a subdomain is used) — Phase 0 of the wildcard multi-tenant rollout, deployed to production | None (auth-logic only) | No (apex-domain login behavior unchanged; new enforcement only applies when a real subdomain is used, which isn't publicly reachable yet) | No |
+| R13.7.1 | Workflow idempotency + cost control — CRM sync jobs and follow-up drafts are now upserted (not duplicated) on workflow re-run; Apollo enrichment skips a redundant paid API call when a usable cached result exists; CRM Sync fails gracefully with a clear message when HubSpot isn't connected, instead of a raw env-var error | None | No | No |
+| R13.8 | **Tenant Provisioning Agent** + controlled tenant self-registration — public `/request-access` form (honeypot-protected) → `platform_admin` review at `/admin/access-requests` → approve/reject → idempotent automatic provisioning (tenant + optional default event + `tenant_admin` invitation) | `0015` (`tenant_access_requests`) | No | Yes |
+
+**Branch note (added 2026-08-18):** R13.7, R13.7.1, and R13.8 shipped on `claude/priceless-keller-10439f`, a branch that was never merged back into `main` — `main` still reflects only through R13.6 + one hotfix. See [PROJECT-HANDOFF.md](../PROJECT-HANDOFF.md) § Git / Worktree State for the full evidence and why this doc (on this branch) is the accurate version.
 
 ## Known issues carried across releases
 
 - **`session.user.id` null bug** — present from early releases through R13.6 until fixed; see [16-troubleshooting.md](16-troubleshooting.md). Any data created before the fix may have `NULL` `created_by_user_id`/audit `user_id` values.
 - **No migration runner** — present since R1, never addressed.
 - **AWS Transcribe subscription gap** — present since R6 (transcription framework), never an application bug, always an AWS account-level gap.
+- **`main` vs. deployed-branch divergence** — present since R13.7 (2026-06-27) until explicitly reconciled; see the branch note above.
 
 ## Dependency additions by release (notable)
 
@@ -33,3 +39,4 @@
 - R12: `pdfkit`, `exceljs`
 - R13.5: `jsqr`
 - R13.6: `@aws-sdk/client-ses`
+- R13.7–13.8: no new dependencies (auth logic, idempotency logic, and the access-request flow all reuse existing packages)

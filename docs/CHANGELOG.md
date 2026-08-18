@@ -2,6 +2,44 @@
 
 All notable changes to Trade Show Revenue Agent, release by release. Dates are approximate (derived from commit history, not always exact).
 
+> **Note added 2026-08-18:** Releases 13.7, 13.7.1, and 13.8 below shipped on branch `claude/priceless-keller-10439f`, which was never merged into `main` — `main` still only reflects through 13.6. Production has been running this branch's code since 2026-06-27. See [PROJECT-HANDOFF.md](../PROJECT-HANDOFF.md) for the full story.
+
+## Release 13.8 — Controlled Tenant Self-Registration & Provisioning
+
+**Major features:** Public `/request-access` form (honeypot spam field, IP/user-agent capture, no auth required) for prospective tenants to request access; `platform_admin` review queue at `/admin/access-requests` (approve/reject with notes); on approval, an idempotent `Tenant Provisioning Agent` automatically creates the tenant (slug/subdomain derived from company name, collision-suffixed), an optional default event, and a `tenant_admin` invitation (same 7-day-expiry email-link mechanism as regular invitations) — all inside one DB transaction, with emails sent afterward so a delivery failure never rolls back a successful provision.
+
+**Database changes:** `0015_tenant_access_requests.sql` — new table `tenant_access_requests`, new enum `access_request_status` (requested/under_review/approved/rejected/provisioned).
+
+**Breaking changes:** None.
+
+**Known issues at release:** Whether this release actually reached production is unconfirmed as of the 2026-08-18 documentation session — see `docs/CURRENT-KNOWN-ISSUES.md` #2.
+
+---
+
+## Release 13.7.1 — Workflow Idempotency, Data Integrity & Cost Optimization
+
+**Major features:** Re-running the Agent Orchestrator for a lead that already has an active CRM-sync job or follow-up draft now **refreshes it in place** instead of creating a duplicate row (`upsertPendingCRMSyncJob()`, `upsertDraftFollowup()`) — completed/failed/approved/rejected records are left untouched as history. Apollo enrichment skips a redundant paid API call when a usable (`enriched`) result already exists for the lead, logged as `enrichment_skipped_cached`; the manual "Refresh Enrichment" button always still calls Apollo via an explicit `forceRefresh` flag. CRM Sync now fails with a clear, actionable "HubSpot isn't connected" message instead of a raw env-var error, surfaced as a banner in the CRM Sync panel before Approve is even clicked (`GET /api/crm-sync/status`).
+
+**Database changes:** None.
+
+**Breaking changes:** None.
+
+**Bug fixes:** Included a small production hotfix (`7e2376c`, "CRM Sync fails gracefully when HubSpot isn't connected") verified live against a real pending sync job in production.
+
+---
+
+## Release 13.7 — Engineering Stabilization & Tenant-Scoped Authentication
+
+**Major features:** Login/mobile UI polish. **Tenant-scoped subdomain authentication** — Phase 0 of the wildcard multi-tenant rollout: `resolveTenantSlug()` (`src/lib/tenant.ts`) now correctly distinguishes the apex domain from a real tenant subdomain (a prior version incorrectly treated the bare apex as a tenant with slug `tradeshow-agent`); `getTenantBySubdomain()` added, querying the `tenants.subdomain` column specifically (distinct from `tenants.slug`); `src/proxy.ts` (this Next.js fork's `middleware.ts` equivalent) forwards the resolved slug as a header + cookie on every request, only setting the cookie for an actual subdomain; `authorize()` in `src/lib/auth.ts` enforces tenant-subdomain matching when a subdomain is used, while preserving today's tenant-agnostic apex-domain login unchanged (wildcard DNS isn't live yet, so the apex remains the only entry point real users have).
+
+**Database changes:** None.
+
+**Breaking changes:** None — the new enforcement only activates when a real tenant subdomain is used, which isn't publicly reachable until wildcard DNS is enabled (see `docs/wildcard-rollout-runbook.md`).
+
+**Known issues at release:** Wildcard SSL/Nginx/DNS (Phases 1–3 of the rollout) prepared but not executed, pending separate approval and GoDaddy DNS access.
+
+---
+
 ## Release 13.6 — Identity, Access Management & User Adoption
 
 **Major features:** Email-based invitations (`user_invitations` table, 7-day token expiry, no `users` row until accepted); self-service + admin-initiated password reset via secure single-use email links; account lockout after 5 failed logins; 5-state user lifecycle (invited/active/inactive/suspended/locked); password history + reuse prevention (last 5); per-user event access scoping; 5-step onboarding wizard; Security Dashboard (`/settings/security`); User Adoption dashboard section; expanded audit logging with IP address capture.

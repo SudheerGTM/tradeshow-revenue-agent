@@ -1,5 +1,7 @@
 # 07 — Authentication & Security
 
+> **Release 13.7 addition, not yet reflected below in full:** `authorize()` now also enforces **tenant-subdomain matching** — when a request arrives on a real tenant subdomain (not the bare apex domain), login is rejected for users belonging to a different tenant, with a distinct `TenantNotFoundError` for an unmapped subdomain. The apex domain (the only entry point real users currently use, since wildcard DNS isn't live yet) keeps today's tenant-agnostic-by-email behavior unchanged. This is the authentication half of the multi-tenant subdomain rollout — see [08-multi-tenant-architecture.md](08-multi-tenant-architecture.md)'s "Subdomain strategy" section for the full flow diagram and rationale; that's the more current source for this specific mechanism.
+
 ## NextAuth v5 (JWT sessions)
 
 - **File:** `src/lib/auth.ts`. Single `Credentials` provider (email + password); no OAuth providers configured yet.

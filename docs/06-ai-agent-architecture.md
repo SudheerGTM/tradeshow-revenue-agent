@@ -1,6 +1,8 @@
 # 06 — AI Agent Architecture
 
-Six business-logic "agents" plus an orchestrator that chains them. **None of them send anything externally without a human approval step**, and **none of them let AI set a number** — scores, ROI%, and revenue figures are always deterministic; AI only explains, drafts, or summarizes. This is the project's single most important guardrail, enforced consistently across every agent below.
+Eight business-logic "agents" plus an orchestrator that chains six of them (Opportunity and Tenant Provisioning run outside the orchestrator, triggered directly from their own API routes — see each section below). **None of them send anything externally without a human approval step**, and **none of them let AI set a number** — scores, ROI%, and revenue figures are always deterministic; AI only explains, drafts, or summarizes. This is the project's single most important guardrail, enforced consistently across every agent below.
+
+> **Corrected during the 2026-08-18 handoff documentation pass:** this doc previously omitted the Opportunity Agent (live since Release 11) and the Tenant Provisioning Agent (added Release 13.8) entirely — both existed in code but were never written up here. Both are now included below.
 
 ## 1. Conversation Intelligence Agent
 
@@ -29,6 +31,7 @@ Six business-logic "agents" plus an orchestrator that chains them. **None of the
 - **Error isolation:** A `settle()` helper wraps the company and contact lookups independently, so one failing doesn't block the other — partial enrichment is a valid outcome, not a hard failure.
 - **Junk-email filtering:** test@test.com, @test.com, n/a, example.com, noemail, none@, fake@ are excluded from the contact search.
 - **Confidence:** Deterministic, not AI — 85 if company name found else 50; 80 if contact ID found else 40. Below 70 → `needs_review`.
+- **Cost control / idempotency (Release 13.7.1):** `runEnrichment()` now skips the (paid, rate-limited) Apollo call entirely when both company and contact enrichment already exist with `enrichmentStatus: "enriched"` — logged as `enrichment_skipped_cached`. This applies to orchestrator-triggered re-runs only; the manual "Refresh Enrichment" button (`POST /api/enrichment/enrich`) always calls Apollo via an explicit `forceRefresh` option, since that's the user-requested-refresh path by design.
 - **Status:** Fully wired, orchestrator step 2, non-critical (workflow continues even if this fails).
 
 ## 4. Lead Scoring Agent
@@ -58,17 +61,20 @@ Six business-logic "agents" plus an orchestrator that chains them. **None of the
 - **Strategy by classification:** hot → email + meeting_request (priority high, immediate); warm → email + LinkedIn (medium, 24h); cold → email only (low, 1 week); `needs_review` → no drafts, returns a manual-review recommendation instead.
 - **Prompt guardrails:** Forbids generic phrases ("just checking in"); requires the draft to reference specific pain points; explicitly forbids claiming an action has already been taken (these are drafts); LinkedIn messages capped under 300 chars; phone_call type produces a talking-points script, not a message.
 - **Failure handling:** AI failure sets confidence=30, `needs_human_review=true`, and the draft body becomes the failure reason (visible to the reviewer, not silently swallowed).
+- **Idempotency (Release 13.7.1):** `upsertDraftFollowup()` refreshes an existing `draft`-status recommendation for the same tenant+lead+followupType in place on workflow re-run, instead of creating a duplicate. Once a draft is approved/rejected it's no longer `draft` status, so the next run is free to create a fresh one without touching that historical record.
 - **Status:** Fully wired, orchestrator step 4, non-critical. **No send capability exists anywhere in the codebase** — approval only marks a draft `approved`, it does not transmit it.
 
 ## 6. CRM Sync Agent
 
 - **Purpose:** Prepare a HubSpot payload; only ever writes to HubSpot after explicit human approval.
-- **File:** likely `src/lib/agents/crm-sync-agent.ts` (per code-inspection scan; confirm exact path if renamed).
+- **File:** `src/lib/agents/crm-sync-agent.ts` (confirmed exact path — the prior version of this doc flagged this as unconfirmed).
 - **Sync plan by classification:** hot → contact+company+deal+task; warm → contact+company+task; cold → contact only; `needs_review` → blocked entirely (`allowSync=false`).
 - **Preparation is read-only:** `prepareCRMRecord()` makes **zero** database writes beyond the `pending_approval` job row itself — no HubSpot call happens until `/api/crm-sync/:id/approve` is called by a manager/tenant_admin.
 - **Duplicate detection:** Best-effort search in HubSpot by email/domain before creating; failures here don't block the preview, since it's just a heads-up to the approver.
 - **Execution order:** contact → company → deal (linked) → task, tracking each created HubSpot ID; on error, the job is marked `failed` with a reason, retryable by tenant_admin.
 - **Policy gate:** `agent_policies` row "Minimum score for CRM recommendation" can block the step entirely below a configured score threshold (default 60).
+- **Idempotency (Release 13.7.1):** `upsertPendingCRMSyncJob()` ensures re-running the workflow for the same lead refreshes an existing `pending_approval` job's payload in place instead of inserting a duplicate — only one active job per tenant+lead+syncType at a time. Completed/failed jobs are left untouched as historical records.
+- **Graceful HubSpot-not-connected handling (Release 13.7.1):** `executeSync()` now checks `HUBSPOT_ACCESS_TOKEN` up front and throws a specific, user-facing "HubSpot credentials are not connected in this tenant" error instead of letting a raw env-var error surface; the CRM Sync panel also shows this as a banner before Approve is even clicked (`GET /api/crm-sync/status`, `src/components/CRMSyncPanel.tsx`).
 - **Status:** Fully wired, orchestrator step 5, non-critical, policy-gated.
 
 ## 7. ROI Agent
@@ -79,7 +85,28 @@ Six business-logic "agents" plus an orchestrator that chains them. **None of the
 - **AI summary:** Purely descriptive of already-computed numbers; if `GEMINI_API_KEY` is missing, falls back to a deterministic template sentence rather than failing — confidence score reflects data completeness, not narrative quality.
 - **Status:** Fully wired, orchestrator step 6, non-critical/optional per the original spec.
 
-## 8. Agent Orchestrator
+## 8. Opportunity & Pipeline Intelligence Agent
+
+- **Purpose:** Convert a qualified (Hot/Warm) lead into an internal trackable opportunity. **Internal pipeline tracking only** — does NOT create or update anything in HubSpot; CRM sync (agent 6) is a fully separate, independently-approved workflow.
+- **File:** `src/lib/agents/opportunity-agent.ts` (Release 11).
+- **Not orchestrator-wired** — triggered directly by `POST /api/opportunities` (and previewed read-only via `POST /api/opportunities/prepare`), not a step in the six-agent workflow chain. A lead becomes an opportunity as an explicit user action, not automatically.
+- **Eligibility gate (`createOpportunityFromLead()`):** blocks if the lead hasn't given consent, has no lead score yet, or the score is `needs_review`. A `cold` classification is blocked unless `managerOverride=true` is passed (booth users can't self-override; see [07-authentication-security.md](07-authentication-security.md)).
+- **Deterministic fields:** stage/priority/probability default by classification (hot → `qualified`/high/40%; warm → `identified`/medium/20%; cold-with-override → `identified`/low/10%, matching `STAGE_PROBABILITY`). `amount` comes from the lead score's `estimatedOpportunityValue`; `expectedRevenue = amount × probability`. **None of this is AI-generated.**
+- **AI's role:** A separate Gemini call (`getAiRecommendation()`) produces only `nextStep`, `riskNotes`, and `aiRecommendation` — narrative text layered on top of the already-decided stage/amount/probability, using the lead's conversation insight, enrichment, follow-up, and CRM-sync-status as context. It cannot change any numeric field, matching the guardrail enforced everywhere else in this doc.
+- **Status:** Fully wired via direct API routes, not orchestrator-wired, no policy gate.
+
+## 9. Tenant Provisioning Agent
+
+- **Purpose:** Provision a brand-new tenant (+ default event + tenant_admin invitation) from an approved self-service access request — the backend of Release 13.8's controlled tenant self-registration flow.
+- **File:** `src/lib/agents/tenant-provisioning-agent.ts` (Release 13.8).
+- **Not orchestrator-wired** — has nothing to do with the per-lead six-agent workflow. Triggered only by `POST /api/access-requests/:id/provision`, and only reachable after a `platform_admin` has explicitly approved the request (`POST /api/access-requests/:id/approve`) — **never called directly from the public `/request-access` form**.
+- **Flow:** public visitor submits `/request-access` (honeypot field + IP/user-agent capture for spam signal, no auth) → row created in `tenant_access_requests` (`status: requested`) → platform_admin notified by email → admin reviews at `/admin/access-requests` → approve/reject → on approve, provisioning runs in a single DB transaction: create `tenants` row (slug/subdomain auto-derived from company name, collision-suffixed), optionally create a default `events` row if an event name was given, create a `tenant_admin` `user_invitations` row (7-day expiry, same mechanism as regular invitations — see [07-authentication-security.md](07-authentication-security.md)), audit-log `tenant_provisioned` + `tenant_admin_invited`, then send the approval + invitation emails **outside** the transaction (so an email failure never rolls back a successful provision).
+- **Idempotent by design:** re-calling provisioning for an already-provisioned request (`status: provisioned`) returns the existing tenant/invitation rather than creating duplicates — checked explicitly before the transaction runs.
+- **Duplicate-tenant heads-up:** best-effort check against `companyWebsite`'s domain before provisioning; logs a warning but does not block (the admin already approved, so provisioning proceeds regardless — this is a signal for the admin, not a hard gate).
+- **Guardrail:** **No code path provisions a tenant without explicit `platform_admin` approval first.** The public form only ever writes a `requested`-status row; it cannot reach `provisionTenantFromAccessRequest()` on its own.
+- **Status:** Fully wired (Release 13.8), not orchestrator-wired, no policy gate — gated entirely by the `platform_admin` approval step instead.
+
+## 10. Agent Orchestrator
 
 - **Files:** `src/lib/orchestrator/orchestrator.ts`, `types.ts`, `agents.ts`, `event-bus.ts`, `policies.ts`.
 - **Execution model:** Synchronous, in-process, inside the HTTP request that calls `POST /api/workflows/start`. There is no queue or background worker.
@@ -101,5 +128,7 @@ Six business-logic "agents" plus an orchestrator that chains them. **None of the
 | Follow-Up | AI (Gemini) | No | No — drafts only, never sent |
 | CRM Sync | Deterministic | No | **No** — requires explicit human approval |
 | ROI | Deterministic + optional AI summary | No | No |
+| Opportunity & Pipeline | Deterministic + AI narrative (next step/risks only) | No (not orchestrator-wired) | No — internal pipeline tracking only, never touches HubSpot |
+| Tenant Provisioning | Deterministic (no AI) | No (not orchestrator-wired) | **No** — requires explicit `platform_admin` approval of the access request first |
 
-See [11-integrations.md](11-integrations.md) for the HubSpot, Apollo, Gemini, email, S3, and Transcribe client details that these agents depend on.
+See [11-integrations.md](11-integrations.md) for the HubSpot, Apollo, Gemini, email, S3, and Transcribe client details that these agents depend on. See [RELEASE-14-ICP-PLAN.md](RELEASE-14-ICP-PLAN.md) for where the Conversation Intelligence and Lead Scoring agents' currently-hardcoded industry assumptions live, and the proposed plan to make them tenant-configurable.

@@ -2,24 +2,35 @@
 
 ```
 src/
+  proxy.ts                  This Next.js fork's equivalent of the classic `middleware.ts`
+                             convention (Next.js 16.2.9 in this repo renames it — see
+                             AGENTS.md; confirmed by the build output labeling it
+                             "ƒ Proxy (Middleware)"). Runs on every request except static
+                             assets: resolves a tenant subdomain from the Host header via
+                             resolveTenantSlug() and forwards it as an x-tenant-slug header
+                             + tenant_slug cookie. See 08-multi-tenant-architecture.md —
+                             this is real, deployed code, not a stub.
   app/
     (app)/                  All authenticated pages — this route group exists so
                              a single layout.tsx provides the shared sidebar/topbar
                              to every page nested under it. Pages NOT in this group
-                             (login, capture, invite, forgot-password, reset-password)
-                             intentionally render without that chrome.
+                             (login, capture, invite, forgot-password, reset-password,
+                             request-access) intentionally render without that chrome.
       dashboard/            Main dashboard (largest single file in the app — 800+ lines,
                              see code-inspection-report.md)
       leads/                Leads list, lead detail (11-tab workspace), new-lead capture
       admin/users/          User management (invitations + lifecycle actions)
+      admin/access-requests/ Platform-admin review/approve/reject queue for tenant
+                             self-registration requests (Release 13.8)
       profile/              Self-service profile, avatar, change password
       settings/             tenant settings, security dashboard
       welcome/               Onboarding wizard
       workflows/, agents/    Orchestrator UI
       opportunities/, pipeline/, followups/, crm-sync/, roi-analytics/, events/
     api/                    Every backend route — see 05-api-reference.md
-    login/, invite/[token]/, forgot-password/, reset-password/, capture/[tenant]/[event]/
-                             Public pages, outside the (app) route group
+    login/, invite/[token]/, forgot-password/, reset-password/, capture/[tenant]/[event]/,
+    request-access/          Public pages, outside the (app) route group. request-access/
+                             is the Release 13.8 public tenant self-registration form.
   components/
     ui/                     Generic primitives — Button, Input, Modal, Badge, Toast,
                              PageHeader, EmptyState. Reuse these before inventing new ones.
@@ -30,10 +41,15 @@ src/
                              QRBadgeScanner, BusinessCardScanner, BusinessCardGallery,
                              DuplicateLeadModal
   lib/
-    agents/                 One file per pipeline agent (lead-scoring, followup-agent,
-                             enrichment-agent, conversation-agent, roi-agent, crm sync)
-                             — each exports a function used both by its own API route
-                             AND by the orchestrator
+    agents/                 One file per agent (lead-scoring, followup-agent,
+                             enrichment-agent, conversation-agent, roi-agent,
+                             crm-sync-agent) — each exports a function used both by its
+                             own API route AND by the orchestrator. Plus two agents NOT
+                             wired into the orchestrator: opportunity-agent.ts (Release 11,
+                             triggered by /api/opportunities) and
+                             tenant-provisioning-agent.ts (Release 13.8, triggered by
+                             /api/access-requests/:id/provision) — see
+                             06-ai-agent-architecture.md.
     orchestrator/            types.ts (AgentAdapter interface — the AWS migration seam),
                              agents.ts (adapters), orchestrator.ts (engine),
                              event-bus.ts, policies.ts
@@ -70,4 +86,4 @@ scripts/
 - No `hooks/` folder — there are no extracted custom React hooks; state logic lives inline in client components.
 - No `styles/` folder — styling is Tailwind utility classes inline, no separate CSS files beyond the global Tailwind entrypoint.
 - No `tests/` folder — see [15-testing-guide.md](15-testing-guide.md) for what testing actually looks like in this project today (manual/browser-driven, not automated).
-- No `middleware.ts` — route protection is page-level (`auth()` called in each server component), not centralized in Next.js middleware.
+- **No `middleware.ts` by that name — but `src/proxy.ts` is its real equivalent in this Next.js version** (see above). Route *auth* protection is still page-level (`auth()` called in each server component) — `proxy.ts` only handles tenant-subdomain resolution, not authentication. Earlier documentation drafts stated flatly that "no middleware exists," which undersold this; corrected 2026-08-18.
