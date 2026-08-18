@@ -14,14 +14,20 @@ const DEFAULT_LANGUAGE = process.env.AWS_TRANSCRIBE_LANGUAGE_CODE ?? "en-GB";
 let _transcribeClient: TranscribeClient | null = null;
 let _s3Client: S3Client | null = null;
 
+function resolvedCredentials() {
+  return process.env.AWS_ACCESS_KEY_ID
+    ? {
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+      }
+    : undefined; // falls back to the instance role when not set (production)
+}
+
 function getTranscribeClient(): TranscribeClient {
   if (!_transcribeClient) {
     _transcribeClient = new TranscribeClient({
       region: REGION,
-      credentials: {
-        accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
-      },
+      credentials: resolvedCredentials(),
     });
   }
   return _transcribeClient;
@@ -31,10 +37,7 @@ function getS3Client(): S3Client {
   if (!_s3Client) {
     _s3Client = new S3Client({
       region: REGION,
-      credentials: {
-        accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
-      },
+      credentials: resolvedCredentials(),
     });
   }
   return _s3Client;
