@@ -2,23 +2,32 @@
 
 > **Read [`PROJECT-HANDOFF.md`](PROJECT-HANDOFF.md) first**, not this file — it's now the primary "current state" document. This file is the lighter-weight operational snapshot on top of it; if the two ever disagree, `PROJECT-HANDOFF.md` wins (it's newer).
 
-Last updated: 2026-08-18 (R14.2 — Configurable ICP Foundation implemented).
+Last updated: 2026-08-18 (S3/Transcribe hotfix deployed to production; R14.2 code complete, not deployed).
 
 ## Current state — read this first
 
-- **R14.2 (Configurable ICP Foundation) is implemented, tested, and NOT yet deployed to production.** New table `icp_profiles` + nullable `events.icp_profile_id`, resolver at `src/lib/icp/icp-resolver.ts`, and a fix for a real duplicate-logic bug (`CompanyIntelTab.tsx` and `lead-scoring.ts` had two independently-drifted hardcoded industry keyword lists — now one shared function). Migration `drizzle/0016_icp_profiles.sql` has **not** been applied to production RDS — see [docs/ICP-ARCHITECTURE.md](docs/ICP-ARCHITECTURE.md) for the migration plan, which needs separate explicit approval before running. **Per the R14.2 stop-gate: do not proceed to the ICP Admin UI or wire ICP context into any agent without further approval.**
-- **`main` and `claude/priceless-keller-10439f` have just been reconciled** via a real merge (not a reset/force-push) — this branch now contains everything from both histories. See "What was just fixed" below for why this mattered more than a routine cleanup.
-- **Production is reachable:** https://tradeshow-agent.gtmtechsol.ai returned `307` (redirect to `/dashboard`, normal unauthenticated behavior) when checked this session. A full authenticated smoke test and a live SSH check of the deployed commit were **not** performed this session.
-- **Deployed commit CONFIRMED via live SSH (2026-08-18):** production runs exactly `be05540` (Release 13.8) — `docker ps` shows `tradeshow-agent:be05540`, and `/request-access`'s compiled page is present in the container. **But `be05540` predates the `main` reconciliation merge (`0972810`)** — direct inspection of the compiled S3Client/TranscribeClient chunks confirms production is running the OLD, buggy unconditional-credentials pattern, not the fixed one. Business-card/voice-note uploads are very likely broken in production right now. See issue #1 in `docs/CURRENT-KNOWN-ISSUES.md`.
+- **S3/Transcribe instance-role hotfix: deployed to production and verified live.** `main`/`claude/priceless-keller-10439f` (`864f848`) is now running in production as `tradeshow-agent:864f848`, replacing `be05540`. Full incident record: [docs/CURRENT-KNOWN-ISSUES.md](docs/CURRENT-KNOWN-ISSUES.md) #1 (now marked Resolved) — **read that entry, not just this summary, for an important correction**: the actual production impact turned out smaller than first assessed, because a static AWS access key was already present in `.env.production` and kept uploads working even under the old buggy code. That static key is now a separate, open follow-up item (see below).
+- **R14.2 (Configurable ICP Foundation) is implemented and tested, NOT yet committed or deployed to production.** New table `icp_profiles` + nullable `events.icp_profile_id`, resolver at `src/lib/icp/icp-resolver.ts`, and a fix for a real duplicate-logic bug (`CompanyIntelTab.tsx` and `lead-scoring.ts` had two independently-drifted hardcoded industry keyword lists — now one shared function). Migration `drizzle/0016_icp_profiles.sql` has **not** been applied to production RDS. **Per the R14.2 stop-gate: do not proceed to the ICP Admin UI or wire ICP context into any agent without further approval.**
+- **New follow-up item found during hotfix verification:** production's `.env.production` has a real, non-empty, static `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` pair (an `AKIA...`-prefixed IAM user key) — this contradicts the documented architecture ("no static AWS access keys live on the box... everything authenticates via the instance role," [10-aws-infrastructure.md](docs/10-aws-infrastructure.md)). The instance role itself is confirmed correctly configured and working (tested directly, live). **Open decision for the user:** rotate out/remove this static key now that the instance-role fallback is confirmed working, or leave it as an intentional redundancy? Not changed by this session without your say-so — removing a working production credential is a real action.
+- **`main` and `claude/priceless-keller-10439f` are reconciled and identical** (merge `0972810`, plus the doc-reconciliation commit `864f848` now also deployed). No divergence remains.
 - **RDS:** `tradeshow-agent-prod.cnec08ekae5z.eu-central-1.rds.amazonaws.com`, db name `tradeshow`, user `tsadmin`. Credentials in AWS Secrets Manager (`tradeshow-agent/prod`) — `aws secretsmanager get-secret-value --secret-id tradeshow-agent/prod` if needed; don't rely on `/tmp/*.txt` caches persisting across sessions. SSH key: `~/.ssh/tradeshow-agent-key.pem`.
 - **`npm run build` is clean** (verified this session — one harmless Turbopack workspace-root warning, no errors).
 - **`npm run lint`: 36 errors / 22 warnings** (verified fresh this session — pre-existing React-hooks-rule findings, none block the build).
+- **A pre-existing React hydration error (minified error #418)** was observed on the lead detail page (`/leads/:id`) during hotfix verification — reproducible on a clean load, unrelated to the AWS credential fix (that only touched `src/lib/aws/*`), not caused by this deploy. Not investigated further this session; worth a look separately.
 - **HubSpot credentials were confirmed blank in production** as of 2026-06-29 — CRM Sync fails gracefully with a "not connected" message (fixed in `7e2376c`) but doesn't work end-to-end until real credentials are supplied.
 - **Wildcard subdomain rollout is mid-flight:** tenant-scoped subdomain auth (Phase 0) done and deployed; wildcard SSL/Nginx/DNS (Phases 1–3) prepared but not executed, pending separate approval + GoDaddy access.
 
-## What was just fixed (this session — branch reconciliation)
+## What was just fixed (this session)
 
-**`main` had one real code fix that `claude/priceless-keller-10439f` was missing: `06df6d8`, the S3/Transcribe instance-role credentials fix.** `claude/priceless-keller-10439f` branched off *before* that fix landed on `main` and never picked it up — meaning `src/lib/aws/s3.ts` and `src/lib/aws/transcribe.ts` still had the old pattern (an explicit credentials object built from `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`, invalid when those are unset, as they intentionally are in production). **Since production has been deploying from this branch since 2026-06-27, business-card and voice-note uploads were likely broken again in production this entire time, silently.** The merge just performed restores the fix cleanly (auto-merged with no conflict on those two files). **This needs to be verified live and redeployed to production as a priority — treat this as a live incident, not just a docs cleanup, until confirmed.**
+**Documentation reconciliation** (commit `864f848`) — fixed stale branch-state claims across `PROJECT-HANDOFF.md`, `RELEASES.md`, `STATUS.md`, `docs/CHANGELOG.md`, `docs/CURRENT-KNOWN-ISSUES.md`, retired the superseded `docs/RELEASE-14-ICP-PLAN.md` to a redirect stub.
+
+**S3/Transcribe production hotfix** — deployed `864f848` (doc commit on top of the `main` reconciliation merge `0972810`, containing `06df6d8`'s instance-role fallback fix and explicitly zero Release 14 ICP code) to production, replacing `be05540`. Verified via:
+1. Direct AWS SDK test inside the container: real S3 `PUT`/`GET`/`DELETE` succeeded.
+2. Direct instance-role-only test (static key env vars cleared for that one process): confirmed the EC2 instance role itself resolves valid temporary (STS) credentials.
+3. **Full authenticated click-path via real API calls** (logged in as `booth@demo.com`, Demo Logistics tenant): business-card upload (`initiate-upload` → S3 `PUT` → `complete-upload`) and voice-note upload, both end-to-end, both confirmed visible in the lead's "Voice & Files" tab afterward, then cleaned up (deleted) since they were test artifacts on a real lead record.
+4. General smoke test: login (both `admin@platform.com` and `booth@demo.com`), dashboard, tenants list, lead list, lead detail page — all render correctly, zero new errors in container logs since the new container started.
+
+**Important correction to the original assessment:** production's `.env.production` turned out to already have a valid static AWS access key present, which means the *old* buggy code (unconditional credential-object construction) was very likely **not actually failing** at the time this was flagged as a live incident — a valid non-empty key makes the old code's behavior identical to the new fixed code's. The code bug was real (confirmed via source inspection and via `06df6d8`'s original commit message describing a real 2026-06-26 outage), but its *current* impact was overstated before this was checked. The hotfix was still the right thing to deploy — it restores the documented, more secure, instance-role-first pattern rather than depending on an undocumented static key — but "was this actively broken right now" and "is the correct code now deployed" turned out to be two different questions. See `docs/CURRENT-KNOWN-ISSUES.md` #1 for the full record.
 
 Historical note carried forward from `main`'s side: two real users (`dadalakarthik806@gmail.com`, `sudheer909@gmail.com`) had temporary passwords set directly via SQL back on 2026-06-26, since SES couldn't deliver reset emails to them (sandbox mode). Both should have changed their password via Profile → Change Password since — this is ~7 weeks old and likely resolved, but hasn't been independently reverified.
 
@@ -46,7 +55,7 @@ Seeded test users (`Password123!` for all): `admin@platform.com` (platform_admin
 
 ## Release history
 
-See `docs/18-release-history.md` and `docs/CHANGELOG.md`, plus `PROJECT-HANDOFF.md` §3 for the fuller picture including R13.7/13.7.1/13.8. Short version: R1–R12 built the core lead pipeline, R13 added the Agent Orchestrator, R13.5 added Quick Capture, R13.6 added the full IAM overhaul, R13.7 added engineering stabilization + the tenant-subdomain auth foundation, R13.7.1 added workflow idempotency/cost control, R13.8 added tenant self-registration + provisioning. Currently at **13.8** in production (confirmed via live SSH) — but production is missing the S3/Transcribe fix restored in the later `main` reconciliation merge (`0972810`), which has not been deployed yet.
+See `docs/18-release-history.md` and `docs/CHANGELOG.md`, plus `PROJECT-HANDOFF.md` §3 for the fuller picture including R13.7/13.7.1/13.8. Short version: R1–R12 built the core lead pipeline, R13 added the Agent Orchestrator, R13.5 added Quick Capture, R13.6 added the full IAM overhaul, R13.7 added engineering stabilization + the tenant-subdomain auth foundation, R13.7.1 added workflow idempotency/cost control, R13.8 added tenant self-registration + provisioning. **Production is now at commit `864f848`** (R13.8 + the reconciliation merge + doc fixes) — confirmed via live SSH and functional verification. R14.1 (assessment) and R14.2 (ICP foundation code) are done but not yet committed/deployed.
 
 ## Guardrails that matter (don't relax these without being asked)
 
@@ -56,7 +65,7 @@ See `docs/18-release-history.md` and `docs/CHANGELOG.md`, plus `PROJECT-HANDOFF.
 - **Follow-up drafts are never sent** — no send capability exists anywhere.
 - **No raw password code path** — admin password resets go through an emailed single-use link, same as self-service; `PATCH /api/users/:id` does not accept a password field.
 - **Tenant isolation** on every query; `booth_user` restricted to records they created.
-- **AWS SDK clients must support the instance-role fallback** — never hardcode an explicit `credentials: {accessKeyId: process.env.X!, ...}` object without a conditional; see `src/lib/email/ses.ts` for the correct pattern. **This has now bitten production twice** — originally fixed in `06df6d8`, silently regressed when the branches diverged, just restored by this merge. Don't reintroduce it in a new AWS client.
+- **AWS SDK clients must support the instance-role fallback** — never hardcode an explicit `credentials: {accessKeyId: process.env.X!, ...}` object without a conditional; see `src/lib/email/ses.ts` for the correct pattern. The code-level version of this bug has now happened twice (originally fixed in `06df6d8`, silently regressed when the branches diverged, restored by the reconciliation merge and now deployed as of `864f848`) — don't reintroduce it in a new AWS client. Separately, a static AWS key currently sits in production's `.env.production`, undermining the *purpose* of this guardrail even with correct code — see "Current state" above.
 - **Workflow reruns are idempotent** (R13.7.1) — don't reintroduce duplicate-row creation on retry for CRM sync jobs or follow-up drafts.
 
 Full detail in `PROJECT-HANDOFF.md` §9, `docs/07-authentication-security.md`, and `docs/08-multi-tenant-architecture.md`.
@@ -64,13 +73,15 @@ Full detail in `PROJECT-HANDOFF.md` §9, `docs/07-authentication-security.md`, a
 ## Known issues / things to watch
 
 See **`docs/CURRENT-KNOWN-ISSUES.md`** for the full severity/impact/workaround/next-step list. Highlights:
-1. **CONFIRMED (live SSH): production is missing the S3/Transcribe instance-role fix** — restored in the reconciliation merge (`0972810`) but production still runs `be05540`, from before that merge. Business-card/voice-note uploads are very likely broken right now. **Top-priority redeploy candidate**, pending your approval.
-2. **Release 13.8 IS deployed to production** — confirmed, no longer an open question.
-3. **Dashboard N+1 query bug** (`src/app/(app)/dashboard/page.tsx`) — High severity, not yet fixed.
-4. **HubSpot credentials blank in production** as of the last check.
-5. **Wildcard DNS rollout paused** at Phase 0 of 4 — explicitly gated, not a bug.
-6. **EC2 build-time OOM risk** — mitigated by swap; if SSH goes unresponsive mid-deploy, the instance is usually still alive.
-7. **Postgres port 5433, not 5432** locally.
+1. **RESOLVED: S3/Transcribe hotfix deployed and verified live** — production runs `864f848`, real business-card/voice-note upload flows confirmed working end-to-end. See the important nuance in "Current state" above about what was actually broken vs. code-correctness.
+2. **NEW: a static AWS access key is present in production's `.env.production`**, contradicting the documented instance-role-only architecture. Instance role confirmed working correctly as a fallback. Open decision: remove the static key now, or leave it? Not changed without your approval.
+3. **Release 13.8 IS deployed to production** — confirmed, no longer an open question.
+4. **Dashboard N+1 query bug** (`src/app/(app)/dashboard/page.tsx`) — High severity, not yet fixed.
+5. **HubSpot credentials blank in production** as of the last check.
+6. **Wildcard DNS rollout paused** at Phase 0 of 4 — explicitly gated, not a bug.
+7. **EC2 build-time OOM risk** — mitigated by swap; if SSH goes unresponsive mid-deploy, the instance is usually still alive.
+8. **Postgres port 5433, not 5432** locally.
+9. **Pre-existing React hydration error (#418)** on the lead detail page — observed during hotfix verification, not caused by it, not investigated further.
 
 ## What's NOT built (explicitly out of scope so far)
 
@@ -78,4 +89,4 @@ Email sending to leads (by design), real AWS Step Functions/Bedrock AgentCore sw
 
 ## Natural next step
 
-**Highest priority: verify the restored S3/Transcribe fix and redeploy to production** — this branch is now the correct code, but production itself hasn't been redeployed since the earlier merge in this session. Second: apply R14.2's migration (`drizzle/0016_icp_profiles.sql`) and deploy its code to production — not done yet, needs separate explicit approval per `docs/ICP-ARCHITECTURE.md`'s migration plan. Third: **decide on R14.3+** — ICP Admin UI, Conversation Intelligence integration, Lead Scoring integration, Follow-Up integration are all explicitly gated behind further approval (R14.2's stop gate) and have not been started.
+The S3/Transcribe hotfix is done — deployed and verified live. Two things need your decision next: (1) whether to remove the static AWS access key now sitting in production's `.env.production`, now that the instance-role fallback is confirmed working; (2) R14.2 — code is complete and tested but not yet committed; the migration (`drizzle/0016_icp_profiles.sql`) has not been applied to production RDS, and R14.3+ (Admin UI, agent integration) is explicitly gated behind further approval per the R14.2 stop gate.

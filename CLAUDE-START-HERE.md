@@ -2,13 +2,15 @@
 
 You're picking up **Trade Show Revenue Agent** — a multi-tenant SaaS that turns trade-show booth conversations into sales pipeline (capture → AI enrichment/scoring/follow-up → CRM sync → ROI reporting), with every revenue number computed deterministically, never by AI.
 
-## First, a critical fact about this repo
+## First, the state of the repo
 
-**`main` and `claude/priceless-keller-10439f` are now identical** (merge commit `0972810`) — the branch-divergence problem that used to be the top item here is resolved. **What's still true and urgent: production is behind both of them.** Confirmed via live SSH: production runs `be05540` (has Release 13.8, does NOT have the S3/Transcribe fix from the reconciliation merge — business-card/voice-note uploads are very likely broken right now). Full evidence: [PROJECT-HANDOFF.md § Git / Worktree State](PROJECT-HANDOFF.md#22-git--worktree-state) and §2 (Current Production State).
+**`main`, `claude/priceless-keller-10439f`, and production are all in sync**, at commit `864f848`. The branch-divergence problem and the resulting production lag that used to be the top items here are both resolved — verified via live SSH and a full authenticated functional smoke test (login, business-card upload, voice-note upload, all confirmed working in production). Full evidence: [PROJECT-HANDOFF.md § Git / Worktree State](PROJECT-HANDOFF.md#22-git--worktree-state) and §2 (Current Production State).
+
+One thing worth knowing before you assume the story is simple: [docs/CURRENT-KNOWN-ISSUES.md](docs/CURRENT-KNOWN-ISSUES.md) #1 has an important correction found during verification — the actual live impact of the S3/Transcribe credential bug was smaller than first assessed, because production already had a static AWS key that kept things working under the old code too. Item #2 there is a new, still-open follow-up: that static key is still present and contradicts the documented instance-role-only architecture — needs a user decision on whether to remove it.
 
 ## What's live
 
-https://tradeshow-agent.gtmtechsol.ai — a single EC2 instance + RDS Postgres, confirmed via live SSH running Release 13.8 (`be05540`). **That build is missing a real S3/Transcribe bug fix restored in a later merge — deploying the fix is the single highest-priority action item**, ahead of any Release 14 work (see the handoff doc). Full IAM, 8 AI/business-logic agents, HubSpot CRM sync gated behind human approval, and a not-yet-publicly-live wildcard-subdomain multi-tenant auth system.
+https://tradeshow-agent.gtmtechsol.ai — a single EC2 instance + RDS Postgres, confirmed via live SSH and functional testing running commit `864f848`. Full IAM, 8 AI/business-logic agents, HubSpot CRM sync gated behind human approval, and a not-yet-publicly-live wildcard-subdomain multi-tenant auth system.
 
 ## Where to read
 
@@ -19,14 +21,14 @@ https://tradeshow-agent.gtmtechsol.ai — a single EC2 instance + RDS Postgres, 
 ## What not to change without asking first
 
 - The guardrails in [PROJECT-HANDOFF.md §9](PROJECT-HANDOFF.md#9-agent-guardrails) — no automatic CRM sync, no automatic tenant provisioning, no send capability for follow-ups, no AI-set numbers, no bypassing tenant isolation.
-- **Don't deploy to production** without explicit approval, even though the S3/Transcribe fix redeploy is urgent — it's a real production action, not something to do unilaterally.
+- **Don't deploy to production, and don't touch `.env.production` (including the static AWS key mentioned above)**, without explicit approval — these are real production actions.
 - Wildcard DNS (Phase 3 of the subdomain rollout) — explicitly gated pending separate approval and GoDaddy access; don't proceed on it just because the SSL/Nginx steps are "prepared."
 - Release 14 beyond R14.2 — **stop-gated.** R14.1 (assessment) and R14.2 (ICP data model/resolver/duplicate-fit-logic fix) are done and tested locally, but not committed or deployed as of the last update. Do not proceed to the ICP Admin UI, Conversation Intelligence integration, Lead Scoring integration, or Follow-Up integration without further explicit approval — see [docs/ICP-ARCHITECTURE.md](docs/ICP-ARCHITECTURE.md).
 
 ## What's next
 
-1. **Deploy the S3/Transcribe fix to production** — the single most urgent item, pending your approval.
-2. **Release 14** — R14.1 and R14.2 are complete: [docs/RELEASE-14-CONFIGURABLE-ICP.md](docs/RELEASE-14-CONFIGURABLE-ICP.md) (assessment) and [docs/ICP-ARCHITECTURE.md](docs/ICP-ARCHITECTURE.md) (what R14.2 built). R14.3+ (Admin UI, agent integration) needs explicit approval before starting — do not assume it from this file alone. (The older `docs/RELEASE-14-ICP-PLAN.md` is retired — don't read it as current.)
+1. **Decide on the static AWS key** in production's `.env.production` — remove it now that the instance-role fallback is confirmed working, or keep it intentionally? See [docs/CURRENT-KNOWN-ISSUES.md](docs/CURRENT-KNOWN-ISSUES.md) #2.
+2. **Release 14** — R14.1 and R14.2 are complete: [docs/RELEASE-14-CONFIGURABLE-ICP.md](docs/RELEASE-14-CONFIGURABLE-ICP.md) (assessment) and [docs/ICP-ARCHITECTURE.md](docs/ICP-ARCHITECTURE.md) (what R14.2 built). R14.2's code is implemented and tested but **not yet committed** — do that first, independently review the diff, then stop before the migration is applied to production RDS. R14.3+ (Admin UI, agent integration) needs explicit approval before starting. (The older `docs/RELEASE-14-ICP-PLAN.md` is retired — don't read it as current.)
 
 ## Checks to run first
 
