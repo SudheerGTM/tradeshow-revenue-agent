@@ -4,6 +4,18 @@ All notable changes to Trade Show Revenue Agent, release by release. Dates are a
 
 > **Note added 2026-08-18:** Releases 13.7, 13.7.1, and 13.8 below shipped on branch `claude/priceless-keller-10439f`. That branch has since been reconciled into `main` via merge (`0972810`), and the reconciled code (plus documentation fixes) has been deployed to and verified in production (`864f848`) — `main`, the branch, and production are all in sync as of this update. See [PROJECT-HANDOFF.md](../PROJECT-HANDOFF.md) for the full story.
 
+## Release 14.3 — Configurable ICP Administration
+
+**Major features:** Full ICP Admin UI (`/settings/icp`, `tenant_admin`-only) — list/create/edit/clone/activate/deactivate profiles across all 5 `ICPConfigSchema` sections with tag-style multi-value inputs (no raw JSON exposed); `/api/icp-profiles/*` CRUD/lifecycle routes; explicit tenant **Default ICP** concept (`tenants.default_icp_profile_id`) replacing R14.2's "exactly one active profile = implicit default" rule — a tenant may now have multiple simultaneously-active profiles, with one optionally marked Default via `PATCH /api/icp-profiles/default`; event create/edit now offers an ICP picker (explicit profile or "use tenant default"), server-side-validated via the existing `validateEventICPAssignment()`; qualitative-only **ICP Test Mode** (`POST /api/icp-profiles/:id/test`) — sample-input → matched/missing/negative/unknown criteria, no numeric score, built by extending the existing shared `src/lib/icp/fit.ts` rather than a separate scoring engine, so it can't diverge from a future real Lead Scoring integration the way two competing implementations could.
+
+**Database changes:** `0017_icp_default_profile.sql` — one nullable `tenants.default_icp_profile_id` column + index. Purely additive; no existing row modified. **Not yet applied to production** (bundled with the still-pending `0016` migration — see `docs/ICP-ARCHITECTURE.md`).
+
+**Breaking changes:** None. A tenant with no ICP profiles and no default set resolves identically to pre-R14.3 behavior (`null` context, unchanged consumer behavior).
+
+**Known issues at release:** No agent yet reads a resolved `ICPContext` — Conversation Intelligence, Lead Scoring, Follow-Up, Opportunity, CRM Sync, and ROI all still use fixed/hardcoded defaults, unchanged since R14.2. That wiring starts at R14.4. Scoring weights remain present in the config schema but inert, with no UI to edit them (unchanged decision from R14.2). Test Mode's pain-point/buying-signal matching is literal substring matching, not semantic — see `docs/ICP-ARCHITECTURE.md` for the specific limitation. Explicitly stop-gated before production deployment and before R14.4 — neither has started.
+
+---
+
 ## Release 14.2 — Configurable ICP Foundation
 
 **Major features:** `icp_profiles` table (tenant-scoped, Zod-validated `configuration_json`), nullable `events.icp_profile_id`; `src/lib/icp/icp-resolver.ts` as the single ICP-reading entry point (`getICPProfile`, `getActiveICPForEvent`, `getICPConfiguration`, `getICPVersion`, `validateICPConfiguration`, `validateEventICPAssignment`); fixed a real duplicate-logic bug where `src/lib/agents/lead-scoring.ts` and `src/components/lead-detail/CompanyIntelTab.tsx` each independently hardcoded a slightly different logistics-industry keyword list — both now share `src/lib/icp/fit.ts`.

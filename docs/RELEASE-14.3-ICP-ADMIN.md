@@ -1,6 +1,6 @@
 # Release 14.3 — Configurable ICP Administration
 
-**Status: plan only. No implementation has been done.** This document is the required output of the R14.3 planning phase — for explicit user approval before any code is written. Depends on R14.2 (`icp_profiles`, resolver, config schema — committed at `14605a2`, not yet deployed) passing verification, which it has (see the R14.2 Verification Report delivered alongside this document: **PASS**).
+**Status: implemented and verified, not yet deployed to production.** Sections A–R below are the original plan as approved. Three amendments were made to that plan before/during implementation (Test Mode role scope, no separate `preview.ts` scoring engine, explicit Default ICP concept replacing "exactly one active = default") — see [Implementation report](#implementation-report-2026-08-21) at the bottom for exactly what was built, how it differs from the original plan, and full test results. The plan text below is preserved as-approved for historical reference; where it's since been superseded, the implementation report is authoritative.
 
 ## A. Objective
 
@@ -182,3 +182,73 @@ Per the brief: do not commit R14.2 changes further, push, apply `0016_icp_profil
 **R14.3 plan: READY**
 **Production changes made: NONE**
 **Awaiting user approval: YES**
+
+---
+
+## Implementation report (2026-08-21)
+
+**R14.3 status: code-complete, tested, committed. Not deployed. R14.4 not started.**
+
+### Amendments applied vs. the plan above
+
+The plan above (§C, §J, §H) was amended before/during implementation per explicit user approval:
+
+1. **Test Mode is `tenant_admin`-only**, not `tenant_admin`/`manager` as §C/§Q left open — closing open question 1 in favor of the narrower default.
+2. **No `src/lib/icp/preview.ts`.** §J's "separate preview calculator" proposal was rejected in favor of extending the *existing* `src/lib/icp/fit.ts` with a new pure qualitative function (`evaluateICPFitQualitative`). Same non-goal (no numeric score, no coupling to real Lead Scoring), different file organization — one shared ICP-fit module instead of two. §O's first risk (divergence between preview and real scoring) is reduced by this, since there's now only one file to reconcile in R14.5, not two.
+3. **Test Mode is not audit-logged** — closes open question 2 in the plan, decided as "no."
+4. **Explicit Default ICP**, not §H's "exactly one active profile = implicit default." Before implementation, the existing `tenants` schema was inspected; the smallest safe addition was one nullable FK column, `tenants.default_icp_profile_id` (migration `0017`, additive-only, `ON DELETE SET NULL`). A tenant may now have multiple simultaneously-active ICP profiles (§H's original ambiguity is gone — activating two profiles is no longer a confusing no-default state, it's normal); exactly one may additionally be marked the tenant Default via `PATCH /api/icp-profiles/default` (`tenant_admin`-only, tenant-ownership-validated server-side). `deactivateICPProfile()` clears the default pointer if the deactivated profile was it, so the resolver never serves a stale default. Full resolution order documented in [ICP-ARCHITECTURE.md](ICP-ARCHITECTURE.md#resolution-order-getactiveicpforevent--updated-in-release-143).
+
+Everything else in the plan (§B roles for CRUD, §D journey, §E page structure, §F route list, §I event-assignment wiring, §K isolation model, §L backward compatibility, §N file list) was implemented as originally planned.
+
+### Exact files changed
+
+**New:**
+- `drizzle/0017_icp_default_profile.sql`
+- `src/app/api/icp-profiles/route.ts`, `[id]/route.ts`, `[id]/clone/route.ts`, `[id]/activate/route.ts`, `[id]/deactivate/route.ts`, `[id]/test/route.ts`, `default/route.ts`
+- `src/app/(app)/settings/icp/page.tsx`, `ICPListClient.tsx`, `[id]/page.tsx`, `[id]/ICPEditClient.tsx`
+- `src/components/icp/TagListField.tsx`
+
+**Modified:**
+- `src/db/schema.ts` — `tenants.defaultIcpProfileId`
+- `src/lib/icp/icp-resolver.ts` — new Default ICP resolution order; new `assertICPProfileOwnedByTenant`, `setTenantDefaultICP`, `deactivateICPProfile`
+- `src/lib/icp/fit.ts` — added `evaluateICPFitQualitative` and its supporting types
+- `src/app/api/events/route.ts`, `src/app/api/events/[id]/route.ts` — server-side-validated `icpProfileId` accept/change on create and edit, dedicated `event_icp_assigned` audit entry
+- `src/app/(app)/events/EventsClient.tsx` — ICP picker on event creation
+- `src/lib/nav.ts` — "ICP Configuration" nav item (`tenant_admin`-only); `CURRENT_RELEASE` bumped `13 → 14.3` (required for the nav item to render unlocked)
+- `docs/ICP-ARCHITECTURE.md` — full rewrite covering R14.3
+
+### Database impact
+
+Additive only. `drizzle/0017_icp_default_profile.sql`:
+```sql
+ALTER TABLE tenants
+  ADD COLUMN default_icp_profile_id UUID REFERENCES icp_profiles(id) ON DELETE SET NULL;
+CREATE INDEX tenants_default_icp_profile_idx ON tenants (default_icp_profile_id);
+```
+No existing row modified. Verified applying cleanly after migrations `0001`–`0016` in a fresh isolated Docker Postgres instance. **Not applied to production** — bundled with `0016` in the same still-pending production migration plan (see [ICP-ARCHITECTURE.md](ICP-ARCHITECTURE.md#production-migration-plan)).
+
+### Tenant-isolation results
+
+4/4 checks passed, both via isolated-database script and live browser session:
+1. `assertICPProfileOwnedByTenant()` rejects a cross-tenant profile ID (used by both event assignment and default assignment) — confirmed throws `ICPTenantMismatchError`.
+2. All `/api/icp-profiles/*` CRUD/lifecycle routes and `/api/icp-profiles/default` require `session.user.role === "tenant_admin"` exactly (not `platform_admin`) and scope every query to `session.user.tenantId`.
+3. `POST /api/events` and `PATCH /api/events/:id` — previously a blind body spread on `PATCH` would have let an unvalidated `icpProfileId` through; both routes now explicitly extract, compare-for-change, and validate `icpProfileId` via `validateEventICPAssignment()` before it reaches the database.
+4. A tenant with zero ICP profiles and no default set resolves identically to pre-R14.3 behavior (`getActiveICPForEvent` → `null`) — re-verified after the resolver rewrite.
+
+### Test Mode side-effect verification
+
+Verified live (real API, real UI, real database), not just by code inspection:
+- **No numeric score in the response** — qualitative criteria only (matched/missing/negative/unknown), confirmed against the actual `POST /api/icp-profiles/:id/test` response shape.
+- **Zero audit_logs rows** from Test Mode invocations, while the same test session's create/edit/activate/set-default actions each logged exactly one row — confirmed via direct SQL query before/after.
+- **Zero rows created** in `leads`, `lead_scores`, `crm_sync_jobs`, `opportunities`, `followup_recommendations` — confirmed via row-count checks before/after a live Test Mode run.
+- **No external calls** — `evaluateICPFitQualitative()` is a pure function (no DB access, no fetch); the route performs one read (the profile being tested) and zero writes.
+
+### Build result
+
+`npm run build` from the main project folder: **clean, exit 0, zero errors.** All 9 new routes/pages present: `/api/icp-profiles`, `/api/icp-profiles/[id]`, `.../activate`, `.../clone`, `.../deactivate`, `.../test`, `/api/icp-profiles/default`, `/settings/icp`, `/settings/icp/[id]`.
+
+### Recommendation for R14.4
+
+**PROCEED**, with one input for R14.4 planning specifically: R14.4 is Conversation Intelligence ICP-awareness — the first release where an agent actually reads a resolved `ICPContext` rather than the fixed hardcoded default in `fit.ts`. Since R14.3 made `getActiveICPForEvent()` the single already-tested resolution entry point (event override → tenant default → null), R14.4 should call that function directly rather than re-deriving ICP context — it's already tenant-isolated, already handles the "no ICP configured" `null` case that every tenant is in today, and already accounts for a deactivated default. No other blocking concerns.
+
+**Production deployment: NOT performed.** **R14.4: NOT started.** Per the amendment's explicit stop-gate, both remain pending separate user approval.

@@ -47,6 +47,12 @@ export const tenants = pgTable("tenants", {
   subdomain: varchar("subdomain", { length: 100 }).notNull().unique(),
   eventName: varchar("event_name", { length: 255 }),
   status: tenantStatusEnum("status").notNull().default("active"),
+  // Release 14.3 — explicit default ICP, distinct from "active" status. A
+  // tenant can have multiple active ICP profiles (different events target
+  // different audiences); this is the one an event falls back to when it has
+  // no explicit icp_profile_id of its own. Must itself be "active" to
+  // resolve — see src/lib/icp/icp-resolver.ts.
+  defaultIcpProfileId: uuid("default_icp_profile_id").references((): AnyPgColumn => icpProfiles.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

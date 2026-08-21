@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { isTenantAdmin } from "@/lib/permissions";
 import { logAudit } from "@/lib/audit";
 import { getAccessibleEventIds } from "@/lib/event-access";
+import { validateEventICPAssignment, ICPTenantMismatchError } from "@/lib/icp/icp-resolver";
 import { db, schema } from "@/db";
 import { eq, and, inArray } from "drizzle-orm";
 
@@ -50,17 +51,27 @@ export async function POST(req: NextRequest) {
   if (!tenantId) return NextResponse.json({ error: "No tenant" }, { status: 400 });
 
   const body = await req.json();
-  const { name, location, startDate, endDate } = body as {
-    name: string; location?: string; startDate?: string; endDate?: string;
+  const { name, location, startDate, endDate, icpProfileId } = body as {
+    name: string; location?: string; startDate?: string; endDate?: string; icpProfileId?: string | null;
   };
 
   if (!name) return NextResponse.json({ error: "name is required" }, { status: 400 });
+
+  // Never trust a client-supplied ICP ID without validating tenant ownership.
+  try {
+    await validateEventICPAssignment(tenantId, icpProfileId ?? null);
+  } catch (err) {
+    if (err instanceof ICPTenantMismatchError) {
+      return NextResponse.json({ error: err.message }, { status: 403 });
+    }
+    throw err;
+  }
 
   const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 
   const [event] = await db
     .insert(schema.events)
-    .values({ tenantId, name, slug, location, startDate, endDate })
+    .values({ tenantId, name, slug, location, startDate, endDate, icpProfileId: icpProfileId ?? null })
     .returning();
 
   await logAudit({
@@ -71,6 +82,17 @@ export async function POST(req: NextRequest) {
     resourceId: event.id,
     metadata: { name, slug },
   });
+
+  if (icpProfileId) {
+    await logAudit({
+      tenantId,
+      userId: session.user.id,
+      action: "event_icp_assigned",
+      resourceType: "event",
+      resourceId: event.id,
+      metadata: { icpProfileId },
+    });
+  }
 
   return NextResponse.json(event, { status: 201 });
 }

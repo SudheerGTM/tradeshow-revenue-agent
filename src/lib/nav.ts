@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, CalendarDays, Users, Mail,
-  RefreshCw, BarChart2, Settings, ShieldCheck, UserPlus, Zap, Briefcase, Kanban, Bot, Workflow, ClipboardList,
+  RefreshCw, BarChart2, Settings, ShieldCheck, UserPlus, Zap, Briefcase, Kanban, Bot, Workflow, ClipboardList, Target,
 } from "lucide-react";
 
 export interface NavItem {
@@ -30,10 +30,11 @@ export const NAV: NavItem[] = [
   { href: "/admin/tenants",         label: "Tenants",          icon: Zap,           release: 2,  roles: ["platform_admin"] },
   { href: "/admin/access-requests", label: "Access Requests",  icon: ClipboardList, release: 13, roles: ["platform_admin"] },
   { href: "/admin/users",        label: "Users",                   icon: ShieldCheck,     release: 2, roles: ["platform_admin", "tenant_admin", "manager"] },
+  { href: "/settings/icp",       label: "ICP Configuration",       icon: Target,          release: 14.3, roles: ["tenant_admin"] },
   { href: "/settings/tenant",    label: "Settings",                icon: Settings,        release: 2 },
 ];
 
-export const CURRENT_RELEASE = 13;
+export const CURRENT_RELEASE = 14.3;
 
 // Priority items surfaced in the mobile bottom nav — matches the "Mobile
 // Booth Usage" priorities: quick lead capture, lead list/score, follow-up.

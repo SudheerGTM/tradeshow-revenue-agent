@@ -63,17 +63,22 @@ export function getICPVersion(profile: IcpProfile): number {
 /**
  * Resolves the ICP context that should apply to a lead in this tenant/event.
  *
- * Resolution order:
+ * Resolution order (Release 14.3 — explicit Default ICP):
  *  1. The event's explicit `icpProfileId`, if set (and still resolvable —
  *     tenant-scoped lookup, so a stale/cross-tenant reference safely yields
  *     nothing here rather than another tenant's data).
- *  2. Otherwise, the tenant's implicit default: exactly one profile with
- *     status "active". If the tenant has zero or more than one active
- *     profile, there is no unambiguous default — returns null rather than
- *     guessing. (No explicit "default" flag exists in the R14.2 schema by
- *     design — see docs/RELEASE-14-CONFIGURABLE-ICP.md's open questions.
- *     An explicit default-selection mechanism is expected to land with the
- *     ICP Admin UI, not before.)
+ *  2. Otherwise, the tenant's explicit `defaultIcpProfileId`, if set AND
+ *     that profile's status is "active" — a tenant can have several active
+ *     profiles simultaneously (different events target different
+ *     audiences); only the one explicitly marked as default is used as the
+ *     fallback. If the designated default has been deactivated, it does not
+ *     resolve (see `deactivateICPProfile()`, which also clears the default
+ *     pointer when this happens, so this branch is a safety net, not the
+ *     primary path).
+ *  3. Otherwise, null.
+ *
+ * (Release 14.2's original rule — "exactly one active profile = implicit
+ * default" — is superseded by this. See docs/ICP-ARCHITECTURE.md.)
  *
  * `null` is not an error — every consumer must treat it as "no ICP
  * configured, use today's default behavior" (see docs/RELEASE-14-CONFIGURABLE-ICP.md § D/E).
@@ -96,31 +101,86 @@ export async function getActiveICPForEvent(tenantId: string, eventId: string | n
     }
   }
 
-  const activeProfiles = await db
-    .select()
-    .from(schema.icpProfiles)
-    .where(and(eq(schema.icpProfiles.tenantId, tenantId), eq(schema.icpProfiles.status, "active")))
-    .orderBy(desc(schema.icpProfiles.updatedAt));
+  const [tenant] = await db
+    .select({ defaultIcpProfileId: schema.tenants.defaultIcpProfileId })
+    .from(schema.tenants)
+    .where(eq(schema.tenants.id, tenantId))
+    .limit(1);
 
-  if (activeProfiles.length !== 1) return null;
+  if (!tenant?.defaultIcpProfileId) return null;
 
-  const [profile] = activeProfiles;
+  const profile = await getICPProfile(tenantId, tenant.defaultIcpProfileId);
+  if (!profile || profile.status !== "active") return null;
+
   return toICPContext(profile, getICPConfiguration(profile));
 }
 
 /**
- * Server-side guard for assigning an ICP profile to an event. Throws
- * ICPTenantMismatchError if the profile doesn't belong to the same tenant as
- * the event (or doesn't exist at all) — callers should invoke this before
- * persisting `events.icpProfileId`. Passing `icpProfileId: null` (clearing
- * the assignment) is always valid and returns without checking anything.
+ * Server-side ownership check — throws ICPTenantMismatchError if
+ * `icpProfileId` doesn't belong to `tenantId` (or doesn't exist at all).
+ * Shared by both event assignment and tenant-default assignment, since both
+ * are the same underlying question: "does this tenant own this profile?"
+ * Returns the profile row so callers that need it don't have to re-fetch.
  */
-export async function validateEventICPAssignment(tenantId: string, icpProfileId: string | null): Promise<void> {
-  if (!icpProfileId) return;
+export async function assertICPProfileOwnedByTenant(tenantId: string, icpProfileId: string): Promise<IcpProfile> {
   const profile = await getICPProfile(tenantId, icpProfileId);
   if (!profile) {
     throw new ICPTenantMismatchError(
       "ICP profile does not exist or does not belong to this tenant — cross-tenant assignment is not allowed."
     );
   }
+  return profile;
+}
+
+/**
+ * Server-side guard for assigning an ICP profile to an event. Passing
+ * `icpProfileId: null` (clearing the assignment) is always valid and
+ * returns without checking anything.
+ */
+export async function validateEventICPAssignment(tenantId: string, icpProfileId: string | null): Promise<void> {
+  if (!icpProfileId) return;
+  await assertICPProfileOwnedByTenant(tenantId, icpProfileId);
+}
+
+/**
+ * Sets (or clears, if `icpProfileId` is null) the tenant's explicit default
+ * ICP profile. Validates tenant ownership server-side — never trust a
+ * client-supplied ICP ID without this check.
+ */
+export async function setTenantDefaultICP(tenantId: string, icpProfileId: string | null): Promise<void> {
+  if (icpProfileId) {
+    await assertICPProfileOwnedByTenant(tenantId, icpProfileId);
+  }
+  await db
+    .update(schema.tenants)
+    .set({ defaultIcpProfileId: icpProfileId, updatedAt: new Date() })
+    .where(eq(schema.tenants.id, tenantId));
+}
+
+/**
+ * Deactivates an ICP profile (status -> "inactive"). If this profile is
+ * currently the tenant's default, clears the default pointer too, so
+ * getActiveICPForEvent() never has to reason about a deactivated default —
+ * see its resolution order above.
+ */
+export async function deactivateICPProfile(tenantId: string, icpProfileId: string): Promise<IcpProfile> {
+  const profile = await assertICPProfileOwnedByTenant(tenantId, icpProfileId);
+
+  const [updated] = await db
+    .update(schema.icpProfiles)
+    .set({ status: "inactive", updatedAt: new Date() })
+    .where(eq(schema.icpProfiles.id, icpProfileId))
+    .returning();
+
+  const [tenant] = await db
+    .select({ defaultIcpProfileId: schema.tenants.defaultIcpProfileId })
+    .from(schema.tenants)
+    .where(eq(schema.tenants.id, tenantId))
+    .limit(1);
+
+  if (tenant?.defaultIcpProfileId === icpProfileId) {
+    await db.update(schema.tenants).set({ defaultIcpProfileId: null, updatedAt: new Date() }).where(eq(schema.tenants.id, tenantId));
+  }
+
+  return updated ?? profile;
 }

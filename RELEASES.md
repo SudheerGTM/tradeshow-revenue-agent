@@ -1,8 +1,8 @@
 # Releases
 
-Tagged release index, Release 1 through 14.2. For feature-level and database-change detail, see `docs/18-release-history.md`; for chronological commit-level notes, see `docs/CHANGELOG.md`. This file is the short-form index — what shipped, when, and whether it broke compatibility.
+Tagged release index, Release 1 through 14.3. For feature-level and database-change detail, see `docs/18-release-history.md`; for chronological commit-level notes, see `docs/CHANGELOG.md`. This file is the short-form index — what shipped, when, and whether it broke compatibility.
 
-**Production status (confirmed via live SSH + functional verification, 2026-08-18):** running `864f848` — the `main`/branch reconciliation merge (`0972810`, which restores a real S3/Transcribe credential-resolution bug fix) plus a documentation-reconciliation commit, deployed and verified via a full authenticated business-card/voice-note upload test. R14.1/R14.2 (`14605a2`) are committed but **not** deployed — the migration `drizzle/0016_icp_profiles.sql` has not been applied to production RDS. See `PROJECT-HANDOFF.md` §2 and §22, and `docs/CURRENT-KNOWN-ISSUES.md` #1 for an important correction found during hotfix verification.
+**Production status (confirmed via live SSH + functional verification, 2026-08-18):** running `864f848` — the `main`/branch reconciliation merge (`0972810`, which restores a real S3/Transcribe credential-resolution bug fix) plus a documentation-reconciliation commit, deployed and verified via a full authenticated business-card/voice-note upload test. R14.1/R14.2/R14.3 are committed but **not** deployed — migrations `drizzle/0016_icp_profiles.sql` and `drizzle/0017_icp_default_profile.sql` have not been applied to production RDS. See `PROJECT-HANDOFF.md` §2 and §22, and `docs/CURRENT-KNOWN-ISSUES.md` #1 for an important correction found during hotfix verification.
 
 | Release | Theme | Breaking changes | Migration required |
 |---|---|---|---|
@@ -21,7 +21,8 @@ Tagged release index, Release 1 through 14.2. For feature-level and database-cha
 | R13.7.1 | Workflow idempotency & cost control — CRM sync jobs and follow-up drafts upserted (not duplicated) on workflow re-run; Apollo enrichment skips redundant cached calls; CRM Sync fails gracefully when HubSpot isn't connected | No | No |
 | R13.8 | Tenant Provisioning Agent + controlled tenant self-registration (`/request-access` → admin approval → automatic provisioning) | No | Yes (`tenant_access_requests`) |
 | R14.1 | Configurable ICP — current-state assessment. See [docs/RELEASE-14-CONFIGURABLE-ICP.md](docs/RELEASE-14-CONFIGURABLE-ICP.md). Approved with conditions. | No | No |
-| **R14.2** (current) | Configurable ICP Foundation — `icp_profiles` table, ICP Resolver, shared fit-logic bug fix. See [docs/ICP-ARCHITECTURE.md](docs/ICP-ARCHITECTURE.md). **Committed (`14605a2`), tested, pushed to origin; NOT deployed to production and migration NOT applied.** Stop-gated before Admin UI/agent integration. | No | Yes (`icp_profiles`, additive) |
+| R14.2 | Configurable ICP Foundation — `icp_profiles` table, ICP Resolver, shared fit-logic bug fix. See [docs/ICP-ARCHITECTURE.md](docs/ICP-ARCHITECTURE.md). Committed, tested. NOT deployed to production and migration NOT applied. | No | Yes (`icp_profiles`, additive) |
+| **R14.3** (current) | Configurable ICP Administration — ICP Admin UI (`/settings/icp`, `tenant_admin`-only), `/api/icp-profiles/*` CRUD/lifecycle, explicit tenant Default ICP (`tenants.default_icp_profile_id`), event-level ICP assignment, qualitative-only ICP Test Mode (no score, no audit). See [docs/RELEASE-14.3-ICP-ADMIN.md](docs/RELEASE-14.3-ICP-ADMIN.md), [docs/ICP-ARCHITECTURE.md](docs/ICP-ARCHITECTURE.md). **Committed, tested; NOT deployed to production and migrations NOT applied.** Stop-gated before production deployment and before R14.4 (agent integration). | No | Yes (`tenants.default_icp_profile_id`, additive) |
 
 **Branch note (2026-08-18):** R13.7, R13.7.1, and R13.8 shipped on `claude/priceless-keller-10439f`, which had diverged from `main` — both branches were reconciled via merge (`0972810`) and are now identical, on GitHub and locally.
 

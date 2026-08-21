@@ -1,15 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Plus, CalendarDays, MapPin, DollarSign, BarChart3, FileText } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Modal } from "@/components/ui/Modal";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { Input } from "@/components/ui/Input";
+import { Input, Select } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
-import type { Event } from "@/db/schema";
+import type { Event, IcpProfile } from "@/db/schema";
 
 const STATUS_COLORS: Record<string, "green" | "blue" | "gray" | "red"> = {
   active: "green", upcoming: "blue", completed: "gray", cancelled: "red",
@@ -99,9 +99,20 @@ export function EventsClient({ initial, canCreate }: { initial: Event[]; canCrea
 }
 
 function CreateEventForm({ onCreated }: { onCreated: (ev: Event) => void }) {
-  const [form, setForm] = useState({ name: "", location: "", startDate: "", endDate: "" });
+  const [form, setForm] = useState({ name: "", location: "", startDate: "", endDate: "", icpProfileId: "" });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [icpProfiles, setIcpProfiles] = useState<IcpProfile[]>([]);
+
+  // Best-effort — a booth_user/manager creating an event won't have access
+  // to /api/icp-profiles beyond the list read, and a 403 here shouldn't
+  // block event creation, just leave the ICP picker showing "Use tenant default."
+  useEffect(() => {
+    fetch("/api/icp-profiles")
+      .then((r) => (r.ok ? r.json() : { items: [] }))
+      .then((d) => setIcpProfiles((d.items ?? []).filter((p: IcpProfile) => p.status === "active")))
+      .catch(() => {});
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -111,7 +122,7 @@ function CreateEventForm({ onCreated }: { onCreated: (ev: Event) => void }) {
     const res = await fetch("/api/events", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form),
+      body: JSON.stringify({ ...form, icpProfileId: form.icpProfileId || null }),
     });
     setLoading(false);
     if (!res.ok) { setError((await res.json()).error ?? "Failed"); return; }
@@ -132,6 +143,12 @@ function CreateEventForm({ onCreated }: { onCreated: (ev: Event) => void }) {
         <Input label="End Date" type="date" value={form.endDate}
           onChange={(e) => setForm(p => ({ ...p, endDate: e.target.value }))} />
       </div>
+      {icpProfiles.length > 0 && (
+        <Select label="ICP Profile" value={form.icpProfileId} onChange={(e) => setForm(p => ({ ...p, icpProfileId: e.target.value }))}>
+          <option value="">Use tenant default</option>
+          {icpProfiles.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </Select>
+      )}
       {error && (
         <p className="text-xs text-[#DC2626] bg-[#fee2e2] border border-[#DC2626]/20 rounded-xl px-3 py-2">{error}</p>
       )}
