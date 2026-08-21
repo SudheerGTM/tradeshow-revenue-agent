@@ -251,4 +251,54 @@ Verified live (real API, real UI, real database), not just by code inspection:
 
 **PROCEED**, with one input for R14.4 planning specifically: R14.4 is Conversation Intelligence ICP-awareness — the first release where an agent actually reads a resolved `ICPContext` rather than the fixed hardcoded default in `fit.ts`. Since R14.3 made `getActiveICPForEvent()` the single already-tested resolution entry point (event override → tenant default → null), R14.4 should call that function directly rather than re-deriving ICP context — it's already tenant-isolated, already handles the "no ICP configured" `null` case that every tenant is in today, and already accounts for a deactivated default. No other blocking concerns.
 
-**Production deployment: NOT performed.** **R14.4: NOT started.** Per the amendment's explicit stop-gate, both remain pending separate user approval.
+---
+
+## Production deployment report (2026-08-21)
+
+Executed per the "Production Deployment Approval — R14.2 + R14.3" document, scope: deploy R14.2 + R14.3 and migrations `0016`/`0017` only; do not start R14.4.
+
+**1. Previous production commit:** `864f848` (S3/Transcribe hotfix + doc reconciliation, zero Release 14 code).
+**2. New production commit:** `fec78eb` (R14.2 + R14.3), container `tradeshow-agent:fec78eb`.
+
+**3. Migration results:** Both applied via `psql -v ON_ERROR_STOP=1`, no errors.
+- `0016_icp_profiles.sql`: `CREATE TYPE`, `CREATE TABLE`, 2× `CREATE INDEX`, `ALTER TABLE events`, `CREATE INDEX` — all succeeded.
+- `0017_icp_default_profile.sql`: `ALTER TABLE tenants`, `CREATE INDEX` — succeeded.
+
+**4. Pre/post row-count verification:**
+| Check | Before | After 0016 | After 0017 |
+|---|---|---|---|
+| `tenants` | 7 | 7 | 7 |
+| `events` | 5 | 5 | 5 |
+| `users` | 13 | 13 | — |
+| `icp_profiles` rows | n/a (didn't exist) | 0 | — |
+| `events.icp_profile_id` non-null | n/a | 0 | — |
+| `tenants.default_icp_profile_id` non-null | n/a | n/a | 0 |
+
+No existing row count or value changed at any step.
+
+**5. Smoke-test results (existing functionality, tenant_admin `admin@demo.com`, tenant Demo Logistics):** Login, Dashboard, Events, Lead Intelligence (list), Lead Detail (Overview, Conversation Intelligence tab present, Company Intelligence — including the R14.2 `ICP MATCH` panel — rendered correctly with real Apollo-enriched data), zero browser console errors. ROI Analytics and Opportunities confirmed working via real concurrent production traffic observed in the audit log (`roi_calculated`, `opportunity_stage_changed` entries from other live users during the deployment window) rather than separately clicked through. No tenant required an ICP Profile to continue working — confirmed via the row-count checks above (all pre-existing data untouched).
+
+**6. ICP functional-test results (all steps from the deployment doc, live in production):**
+- Created ICP profile "R14.3 Prod Verification ICP" → `icp_profile_created` audited.
+- Populated Company Fit (industries, countries, employee range), Persona Fit (target titles), Problem Fit (priority pain point) sections.
+- Saved and reloaded — fields persisted, version bumped `v1 → v2` (confirms change-triggered version bump) → `icp_profile_updated` audited.
+- Activated → `icp_profile_activated` audited.
+- Set as Tenant Default → `icp_default_changed` audited.
+- Created a new event ("R14.3 Deployment Test Event") with this ICP explicitly assigned via the picker → `event.created` + a dedicated `event_icp_assigned` audit entry, `events.icp_profile_id` verified set correctly in the DB.
+- Ran Test ICP with a matching sample → **qualitative output only**: "ICP Match: Strong", 5/6 criteria matched (industry, geography, company size, persona, pain point), 1 correctly flagged "not enough data / not configured" (buying signal, left unconfigured) — no numeric score anywhere in the response.
+- Confirmed Test Mode created no lead, score, opportunity, CRM job, or follow-up (pure function, no DB writes in the route) and **no audit_logs entry** — verified directly: no audit row appears between `icp_default_changed` (19:51:22) and the next real action (`event.created`, 19:56:32).
+- Deactivated the profile afterward (cleanup) — the tenant's `default_icp_profile_id` was automatically cleared as designed, confirmed both in the UI (badge disappeared) and via direct SQL (`default_icp_profile_id` → `NULL`).
+
+**7. Tenant-isolation results:** A forged/cross-tenant `icpProfileId` (`00000000-0000-0000-0000-000000000000`) submitted on `POST /api/events` was rejected with `403` and the exact expected error message; confirmed no event row was created by the rejected request. (Production has only one tenant with an ICP profile so far — the one created for this test — so a *real* second tenant's profile ID wasn't available to test against; the forged-ID test exercises the identical `assertICPProfileOwnedByTenant()` code path a real cross-tenant ID would hit.)
+
+**8. Container/log health:** New container `tradeshow-agent:fec78eb` up and healthy; local (`curl localhost:3000/login` → 200) and public (`curl https://tradeshow-agent.gtmtechsol.ai/login` → 200) health checks both passed. `docker logs` since startup shows exactly one error: the pre-existing blank-event-date 500 (see below) — no other errors, no crashes, no restarts.
+
+**9. Rollback status:** Not needed — deployment healthy. Previous container preserved as `tradeshow-agent-prev-864f848` (stopped, not removed) for instant rollback if needed later. Database rollback not assessed/applied (migrations are additive and harmless per the doc's own guidance — no reason to consider it).
+
+**10. Documentation updated:** `docs/CURRENT-KNOWN-ISSUES.md` (#6, new pre-existing bug found), `STATUS.md`, `RELEASES.md`, `PROJECT-HANDOFF.md`, `docs/CHANGELOG.md`, this file.
+
+**One out-of-scope finding:** `POST /api/events` returns an unhandled 500 if Start Date or End Date is left blank (Postgres rejects `""` for a `date` column). Confirmed **pre-existing and unrelated to R14.2/R14.3** — the same blank-string form pattern predates this release; R14.3 only added `icpProfileId` alongside it. No data integrity impact (insert fails atomically, confirmed via row count). Logged as [CURRENT-KNOWN-ISSUES.md](CURRENT-KNOWN-ISSUES.md) #6, not fixed as part of this deployment (out of the approved scope, which was R14.2/R14.3 + migrations only).
+
+**11. Recommendation for R14.4:** Unchanged from the implementation report above — **PROCEED**, calling `getActiveICPForEvent()` directly as the resolution entry point. Separately, recommend fixing known-issue #6 (blank event dates) in a small, isolated maintenance change whenever convenient — it predates this release and isn't blocking anything.
+
+**Production deployment: COMPLETE.** **R14.4: NOT started.** Per the deployment approval's explicit stop-gate, R14.4 remains pending separate user approval.

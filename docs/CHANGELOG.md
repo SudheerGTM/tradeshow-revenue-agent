@@ -12,7 +12,9 @@ All notable changes to Trade Show Revenue Agent, release by release. Dates are a
 
 **Breaking changes:** None. A tenant with no ICP profiles and no default set resolves identically to pre-R14.3 behavior (`null` context, unchanged consumer behavior).
 
-**Known issues at release:** No agent yet reads a resolved `ICPContext` — Conversation Intelligence, Lead Scoring, Follow-Up, Opportunity, CRM Sync, and ROI all still use fixed/hardcoded defaults, unchanged since R14.2. That wiring starts at R14.4. Scoring weights remain present in the config schema but inert, with no UI to edit them (unchanged decision from R14.2). Test Mode's pain-point/buying-signal matching is literal substring matching, not semantic — see `docs/ICP-ARCHITECTURE.md` for the specific limitation. Explicitly stop-gated before production deployment and before R14.4 — neither has started.
+**Known issues at release:** No agent yet reads a resolved `ICPContext` — Conversation Intelligence, Lead Scoring, Follow-Up, Opportunity, CRM Sync, and ROI all still use fixed/hardcoded defaults, unchanged since R14.2. That wiring starts at R14.4. Scoring weights remain present in the config schema but inert, with no UI to edit them (unchanged decision from R14.2). Test Mode's pain-point/buying-signal matching is literal substring matching, not semantic — see `docs/ICP-ARCHITECTURE.md` for the specific limitation. Explicitly stop-gated before R14.4 — not started.
+
+**Deployment:** Deployed to production 2026-08-21 (commit `fec78eb`), replacing `864f848`. Migrations `0016`/`0017` applied cleanly. Functionally re-verified live against a real production tenant. Found one pre-existing, unrelated bug during verification: `POST /api/events` 500s if Start/End Date are left blank (the form has always sent `""` rather than `null` — not introduced by R14.2/R14.3) — see [CURRENT-KNOWN-ISSUES.md](CURRENT-KNOWN-ISSUES.md) #6.
 
 ---
 

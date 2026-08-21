@@ -37,6 +37,11 @@ Point-in-time snapshot compiled 2026-08-18, verified by direct inspection of the
 **Workaround:** None needed unless you're working directly in that other checkout.
 **Recommended next step:** Whoever owns that checkout should confirm intent before committing or discarding.
 
+### 6. `POST /api/events` 500s if Start Date or End Date is left blank — NEW, found during R14.3 deployment verification
+**Severity:** Medium · **Impact:** `EventsClient.tsx`'s create-event form always sends `startDate`/`endDate` as empty strings (`""`) when the user leaves them blank, rather than `null`/omitted. Postgres's `date` columns reject `""` outright (`invalid input syntax for type date: ""`, code `22007`), so the whole insert fails with an unhandled 500 rather than a friendly validation message. Reproduced live in production (2026-08-21) while functionally verifying R14.3's ICP event-assignment picker — confirmed **pre-existing and unrelated to R14.2/R14.3**: the same `startDate: "", endDate: ""` form-state pattern exists in the pre-R14.3 version of this component too; R14.3 only added `icpProfileId` handling alongside it. The failed insert is atomic (confirmed via row-count check immediately after — no partial/corrupt event row was created), so no data integrity impact, just a poor error experience for the user.
+**Workaround:** Always fill in both Start Date and End Date when creating an event.
+**Recommended next step:** Either make `events.start_date`/`end_date` accept `null` from the API (send `undefined`/omit the key when blank, matching how `icpProfileId` already does `form.icpProfileId || null`) or make them required fields in the UI with client-side validation. Small, isolated fix — not scoped to any in-flight release; flag for the next convenient maintenance pass.
+
 ## Infrastructure / deployment
 
 ### 6. Wildcard subdomain rollout is paused mid-flight (Phases 1–3 of 4)
