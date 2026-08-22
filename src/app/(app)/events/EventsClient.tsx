@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Modal } from "@/components/ui/Modal";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { Input } from "@/components/ui/Input";
+import { Input, Select } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { getEventDisplayStatus } from "@/lib/event-status";
 import type { Event, IcpProfile } from "@/db/schema";
@@ -99,20 +99,25 @@ export function EventsClient({ initial, canCreate }: { initial: Event[]; canCrea
 }
 
 function CreateEventForm({ onCreated }: { onCreated: (ev: Event) => void }) {
-  const [form, setForm] = useState({ name: "", location: "", startDate: "", endDate: "" });
+  const [form, setForm] = useState({ name: "", location: "", startDate: "", endDate: "", campaignId: "" });
   const [icpProfileIds, setIcpProfileIds] = useState<string[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [icpProfiles, setIcpProfiles] = useState<IcpProfile[]>([]);
+  const [campaigns, setCampaigns] = useState<{ id: string; name: string; icpCount: number }[]>([]);
 
   // Best-effort — a booth_user/manager creating an event won't have access
-  // to /api/icp-profiles beyond the list read, and a 403 here shouldn't
-  // block event creation, just leave the ICP picker empty (falls back to
-  // the tenant's default ICP, or no ICP context, same as before).
+  // to /api/icp-profiles or /api/campaigns beyond the list read, and a 403
+  // here shouldn't block event creation, just leave the pickers empty
+  // (falls back to the tenant's default ICP, or no ICP context, same as before).
   useEffect(() => {
     fetch("/api/icp-profiles")
       .then((r) => (r.ok ? r.json() : { items: [] }))
       .then((d) => setIcpProfiles((d.items ?? []).filter((p: IcpProfile) => p.status === "active")))
+      .catch(() => {});
+    fetch("/api/campaigns")
+      .then((r) => (r.ok ? r.json() : { items: [] }))
+      .then((d) => setCampaigns((d.items ?? []).filter((c: { status: string }) => c.status === "active")))
       .catch(() => {});
   }, []);
 
@@ -128,12 +133,14 @@ function CreateEventForm({ onCreated }: { onCreated: (ev: Event) => void }) {
     const res = await fetch("/api/events", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...form, icpProfileIds }),
+      body: JSON.stringify({ ...form, campaignId: form.campaignId || null, icpProfileIds }),
     });
     setLoading(false);
     if (!res.ok) { setError((await res.json()).error ?? "Failed"); return; }
     onCreated(await res.json());
   }
+
+  const selectedCampaign = campaigns.find((c) => c.id === form.campaignId);
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
@@ -149,6 +156,12 @@ function CreateEventForm({ onCreated }: { onCreated: (ev: Event) => void }) {
         <Input label="End Date" type="date" value={form.endDate}
           onChange={(e) => setForm(p => ({ ...p, endDate: e.target.value }))} />
       </div>
+      {campaigns.length > 0 && (
+        <Select label="Campaign (optional)" value={form.campaignId} onChange={(e) => setForm(p => ({ ...p, campaignId: e.target.value }))}>
+          <option value="">No campaign</option>
+          {campaigns.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </Select>
+      )}
       {icpProfiles.length > 0 && (
         <div>
           <label className="block text-xs font-medium text-[#475569] mb-1.5">Target ICPs</label>
@@ -162,9 +175,11 @@ function CreateEventForm({ onCreated }: { onCreated: (ev: Event) => void }) {
             ))}
           </div>
           <p className="text-[11px] text-[#94A3B8] mt-1.5">
-            {icpProfileIds.length === 0
-              ? "None selected — this event will use the tenant's default ICP."
-              : "A lead may match any selected ICP."}
+            {icpProfileIds.length > 0
+              ? "A lead may match any selected ICP."
+              : selectedCampaign
+                ? `Targeting inherited from "${selectedCampaign.name}" — ${selectedCampaign.icpCount} ICP profile${selectedCampaign.icpCount === 1 ? "" : "s"}.`
+                : "None selected — this event will use the tenant's default ICP."}
           </p>
         </div>
       )}
