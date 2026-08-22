@@ -1,6 +1,6 @@
 # Release 14.3.1 — Product Hardening, Platform Admin, Plan & Usage
 
-**Status: implemented, tested against an isolated database, committed. Not deployed to production.** Per the "Final Development Brief — R14.3.1 Hardening + Plan & Usage + R14.4 Unified Multi-ICP Targeting," approved after the assessment in [docs/RELEASE-14.3.1-14.4-ASSESSMENT.md](RELEASE-14.3.1-14.4-ASSESSMENT.md). See [RELEASE-14.4-UNIFIED-TARGETING.md](RELEASE-14.4-UNIFIED-TARGETING.md) for the Event/Campaign multi-ICP work that shipped alongside this.
+**Status: implemented, tested against an isolated database, committed, and deployed to production (2026-08-22, commit `8287357`).** Per the "Final Development Brief — R14.3.1 Hardening + Plan & Usage + R14.4 Unified Multi-ICP Targeting," approved after the assessment in [docs/RELEASE-14.3.1-14.4-ASSESSMENT.md](RELEASE-14.3.1-14.4-ASSESSMENT.md). See [RELEASE-14.4-UNIFIED-TARGETING.md](RELEASE-14.4-UNIFIED-TARGETING.md) for the Event/Campaign multi-ICP work that shipped alongside this, and [Production deployment report](#production-deployment-report-2026-08-22) below.
 
 ## Event status fix
 
@@ -51,3 +51,33 @@ Verified live: a test tenant with 1 user, 5 events, 3 ICP profiles, 0 leads/work
 - `npm run build`: clean throughout every step.
 - Isolated Docker Postgres (all 20 migrations `0001`–`0020` applied in sequence, clean): `deriveEventStatus`/`getEventDisplayStatus` verified for upcoming/ongoing (both inclusive boundaries)/completed/cancelled-override/no-dates cases — see [RELEASE-14.4-UNIFIED-TARGETING.md](RELEASE-14.4-UNIFIED-TARGETING.md) for the full test run (event status was tested in the same pass as targeting).
 - Live browser: Plan & Usage numbers confirmed correct against known seed data (see above); Events page badge shows "Upcoming" correctly for dateless test events (falls back to `upcoming` when neither date is set, matching the "nothing to derive" case).
+
+---
+
+## Production deployment report (2026-08-22)
+
+Deployed together with R14.4 (same migration/build/cutover — one combined deployment window, per the standard practice for a release spanning both). Full step-by-step:
+
+**1. Previous production commit:** `5f230b9` (Apollo status route). **New production commit:** `8287357`.
+
+**2. Pre-migration baseline (verified, not assumed):** 9 tenants, 7 events, 3 ICP profiles, 16 users.
+
+**3. Migrations applied, in order, via `psql -v ON_ERROR_STOP=1`, no errors:**
+- `0018_tenant_plan.sql` — `ALTER TABLE`. Verified: tenant count still 9, all 9 rows correctly defaulted to `plan_name = 'trade_show_pro'`.
+- `0019_event_icp_profiles.sql` — table + 2 indexes + backfill. `INSERT 0 2` — see [RELEASE-14.4-UNIFIED-TARGETING.md](RELEASE-14.4-UNIFIED-TARGETING.md) for the exact row-level verification.
+- `0020_campaigns.sql` — enum + 2 tables + 3 indexes + `ALTER TABLE events`. Verified: `campaigns`/`campaign_icp_profiles` empty, `events.campaign_id` NULL on all 7 pre-existing events.
+
+**4. Post-migration row counts:** tenants 9, events 7, icp_profiles 3, users 16 — **identical to baseline**. No existing row's value changed at any step.
+
+**5. Application deployment:** `git archive` from `8287357` → `scp` → Docker build (clean) → container rename/stop/run cutover. Local health check (`curl localhost:3000/login` → 200), public health check (`curl https://tradeshow-agent.gtmtechsol.ai/login` → 200), both passed. Server logs since startup: zero errors.
+
+**6. Functional verification, live in production (tenant_admin `admin@demo.com`, Demo Logistics):**
+- **Event status fix confirmed working on real data**, not just test fixtures: "Multimodal 2026" (ended 2026-07-02, well before today) now correctly displays **"Completed"** — this event had been stuck showing "Upcoming" before this deployment, which is the exact bug this release fixed.
+- **Plan & Usage** rendered real tenant-scoped numbers: Users 5/10, Events 2/10, ICP Profiles 1/10, Leads/AI-Workflow-Runs/Enrichment/Storage all correctly at 0 for the current period.
+- R14.4 functional pass — see [RELEASE-14.4-UNIFIED-TARGETING.md § Production deployment report](RELEASE-14.4-UNIFIED-TARGETING.md#production-deployment-report-2026-08-22).
+
+**7. Rollback status:** Not needed — deployment healthy throughout. Previous container preserved as `tradeshow-agent-prev-5f230b9` (stopped, not removed) for instant rollback. Database rollback not assessed/applied — all three migrations are additive and harmless per their own design.
+
+**8. Documentation updated:** this file, `RELEASE-14.4-UNIFIED-TARGETING.md`, `STATUS.md`, `RELEASES.md`, `PROJECT-HANDOFF.md`.
+
+**Production deployment: COMPLETE.** Agent integration (Conversation Intelligence, Lead Scoring, Follow-Up, CRM Sync, Opportunity, ROI, Orchestrator reading `resolveTargetingContext()`) remains **NOT started**, per the R14.4 brief's stop-gate — pending separate explicit approval.

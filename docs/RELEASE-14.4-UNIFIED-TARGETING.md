@@ -1,6 +1,6 @@
 # Release 14.4 — Unified Multi-ICP Targeting (Event + Campaign)
 
-**Status: implemented, tested against an isolated database, committed. Not deployed to production. Not integrated into any agent.** Per the "Final Development Brief — R14.3.1 Hardening + Plan & Usage + R14.4 Unified Multi-ICP Targeting," which explicitly **superseded** an earlier, narrower design (Campaign-only multi-ICP, Campaign overriding Event) captured in [docs/RELEASE-14.3.1-14.4-ASSESSMENT.md](RELEASE-14.3.1-14.4-ASSESSMENT.md) — that document is kept for historical record but its Campaign-only precedence proposal (§J) is **not** what was built; this file is authoritative.
+**Status: implemented, tested against an isolated database, committed, and deployed to production (2026-08-22, commit `8287357`). Not integrated into any agent.** Per the "Final Development Brief — R14.3.1 Hardening + Plan & Usage + R14.4 Unified Multi-ICP Targeting," which explicitly **superseded** an earlier, narrower design (Campaign-only multi-ICP, Campaign overriding Event) captured in [docs/RELEASE-14.3.1-14.4-ASSESSMENT.md](RELEASE-14.3.1-14.4-ASSESSMENT.md) — that document is kept for historical record but its Campaign-only precedence proposal (§J) is **not** what was built; this file is authoritative. See [Production deployment report](#production-deployment-report-2026-08-22) at the bottom.
 
 ## Architectural principle
 
@@ -120,3 +120,19 @@ One 500 error was hit during live testing — caused by leaving Start/End Date b
 ## Recommendation for next release
 
 **PROCEED** to wiring `resolveTargetingContext()` into an actual agent consumer (starting with Conversation Intelligence, per the original R14 sequencing) whenever that's separately approved. No architectural rework needed — the resolver output shape (`{source, contextId, icps[]}`) was designed for exactly this.
+
+---
+
+## Production deployment report (2026-08-22)
+
+Deployed together with R14.3.1 — see [RELEASE-14.3.1-HARDENING.md § Production deployment report](RELEASE-14.3.1-HARDENING.md#production-deployment-report-2026-08-22) for the shared migration/cutover/rollback record. R14.4-specific verification, live in production:
+
+- Baseline before migration: 9 tenants, 7 events, 3 ICP profiles, 16 users, 2 events with a pre-existing `icp_profile_id` (a real one, "Aviation Companies," plus the known R14.3-deployment test event).
+- `0019`'s backfill inserted exactly 2 rows into `event_icp_profiles`, matching those 2 events precisely (verified by joining `events.icp_profile_id` against the new table's contents — identical on both sides).
+- `0020` created `campaigns`/`campaign_icp_profiles` empty, `events.campaign_id` NULL on all 7 existing events, as expected.
+- Full live functional pass: created a real Campaign, activated it, assigned an ICP, created a real event with that Campaign selected, confirmed the campaign's event count incremented (0 → 1) and the event correctly shows `campaign_id` set.
+- Cross-tenant rejection re-verified live: a forged `campaignId` on `POST /api/events` → `403`, zero rows created.
+- Audit trail confirmed correct: `campaign_created`, `campaign_activated`, `campaign_icps_updated`, `event.created` each logged exactly once for the actions taken.
+- **Real concurrent production traffic during the verification window** — a genuine lead went through the full Conversation Intelligence → Enrichment → Lead Scoring → Follow-Up → CRM Sync-prepare → ROI pipeline with zero errors, confirming the untouched agent pipeline is unaffected by this deployment.
+- Server logs: zero errors since the new container started.
+- Test artifacts cleaned up: the test Campaign was archived after verification (soft-disable, matching this codebase's no-hard-delete convention). The test event itself could not be removed — no event-delete capability exists in the product, same limitation noted during the R14.3 deployment.
