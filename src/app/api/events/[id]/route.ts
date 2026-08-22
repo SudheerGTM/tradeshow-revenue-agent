@@ -6,6 +6,35 @@ import { getEventICPProfiles, setEventICPProfiles, validateEventCampaignAssignme
 import { db, schema } from "@/db";
 import { eq, and } from "drizzle-orm";
 
+// GET /api/events/:id — tenant-scoped, any authenticated tenant role.
+// Includes the event's currently-assigned ICP profile IDs (event_icp_profiles)
+// since that list doesn't live on the event row itself — needed by the Edit
+// Event form to pre-fill the multi-select checklist.
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const session = await auth();
+  if (!session || !session.user.tenantId) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const { id } = await params;
+  const tenantId = session.user.tenantId;
+
+  const [event] = await db
+    .select()
+    .from(schema.events)
+    .where(and(eq(schema.events.id, id), eq(schema.events.tenantId, tenantId)))
+    .limit(1);
+
+  if (!event) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+  const icpProfiles = await getEventICPProfiles(tenantId, id);
+
+  return NextResponse.json({ ...event, icpProfileIds: icpProfiles.map((p) => p.id) });
+}
+
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }

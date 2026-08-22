@@ -2,23 +2,49 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { Plus, CalendarDays, MapPin, DollarSign, BarChart3, FileText } from "lucide-react";
+import { Plus, CalendarDays, MapPin, DollarSign, BarChart3, FileText, Pencil } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Modal } from "@/components/ui/Modal";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Input, Select } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
+import { useToast } from "@/components/ui/Toast";
 import { getEventDisplayStatus } from "@/lib/event-status";
 import type { Event, IcpProfile } from "@/db/schema";
 
 export function EventsClient({ initial, canCreate }: { initial: Event[]; canCreate: boolean }) {
+  const toast = useToast();
   const [events, setEvents] = useState<Event[]>(initial);
   const [showCreate, setShowCreate] = useState(false);
+  const [editingEventId, setEditingEventId] = useState<string | null>(null);
+  const [editingLoading, setEditingLoading] = useState(false);
+  const [editingData, setEditingData] = useState<(Event & { icpProfileIds: string[] }) | null>(null);
 
   function onCreated(ev: Event) {
     setEvents((p) => [ev, ...p]);
     setShowCreate(false);
+  }
+
+  function onSaved(ev: Event) {
+    setEvents((p) => p.map((e) => (e.id === ev.id ? ev : e)));
+    setEditingEventId(null);
+    setEditingData(null);
+  }
+
+  async function openEdit(eventId: string) {
+    setEditingEventId(eventId);
+    setEditingLoading(true);
+    try {
+      const res = await fetch(`/api/events/${eventId}`);
+      if (!res.ok) throw new Error((await res.json()).error ?? "Failed to load event");
+      setEditingData(await res.json());
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to load event");
+      setEditingEventId(null);
+    } finally {
+      setEditingLoading(false);
+    }
   }
 
   return (
@@ -56,7 +82,14 @@ export function EventsClient({ initial, canCreate }: { initial: Event[]; canCrea
             <div key={ev.id} className="bg-white border border-[#E2E8F0] rounded-xl p-5 space-y-3 shadow-sm">
               <div className="flex items-start justify-between gap-2">
                 <h3 className="text-sm font-semibold text-[#0F172A] leading-tight">{ev.name}</h3>
-                <Badge variant={displayStatus.color}>{displayStatus.label}</Badge>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <Badge variant={displayStatus.color}>{displayStatus.label}</Badge>
+                  {canCreate && (
+                    <button onClick={() => openEdit(ev.id)} className="text-[#94A3B8] hover:text-[#0F4C81] transition" aria-label={`Edit ${ev.name}`}>
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
               </div>
               {ev.location && (
                 <div className="flex items-center gap-1.5 text-xs text-[#475569]">
@@ -91,34 +124,55 @@ export function EventsClient({ initial, canCreate }: { initial: Event[]; canCrea
 
       {canCreate && (
         <Modal open={showCreate} onClose={() => setShowCreate(false)} title="Create Event">
-          <CreateEventForm onCreated={onCreated} />
+          <EventForm mode="create" onSaved={onCreated} />
+        </Modal>
+      )}
+
+      {canCreate && (
+        <Modal open={editingEventId !== null} onClose={() => { setEditingEventId(null); setEditingData(null); }} title="Edit Event">
+          {editingLoading || !editingData ? (
+            <p className="text-sm text-[#94A3B8] py-6 text-center">Loading…</p>
+          ) : (
+            <EventForm mode="edit" event={editingData} onSaved={onSaved} />
+          )}
         </Modal>
       )}
     </div>
   );
 }
 
-function CreateEventForm({ onCreated }: { onCreated: (ev: Event) => void }) {
-  const [form, setForm] = useState({ name: "", location: "", startDate: "", endDate: "", campaignId: "" });
-  const [icpProfileIds, setIcpProfileIds] = useState<string[]>([]);
+function EventForm({
+  mode, event, onSaved,
+}: {
+  mode: "create" | "edit";
+  event?: Event & { icpProfileIds: string[] };
+  onSaved: (ev: Event) => void;
+}) {
+  const [form, setForm] = useState({
+    name: event?.name ?? "", location: event?.location ?? "",
+    startDate: event?.startDate ?? "", endDate: event?.endDate ?? "",
+    campaignId: event?.campaignId ?? "",
+  });
+  const [icpProfileIds, setIcpProfileIds] = useState<string[]>(event?.icpProfileIds ?? []);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [icpProfiles, setIcpProfiles] = useState<IcpProfile[]>([]);
   const [campaigns, setCampaigns] = useState<{ id: string; name: string; icpCount: number }[]>([]);
 
-  // Best-effort — a booth_user/manager creating an event won't have access
-  // to /api/icp-profiles or /api/campaigns beyond the list read, and a 403
-  // here shouldn't block event creation, just leave the pickers empty
-  // (falls back to the tenant's default ICP, or no ICP context, same as before).
+  // Best-effort — a booth_user/manager editing/creating an event won't have
+  // access to /api/icp-profiles or /api/campaigns beyond the list read, and a
+  // 403 here shouldn't block the form, just leave the pickers empty (falls
+  // back to the tenant's default ICP, or no ICP context, same as before).
   useEffect(() => {
     fetch("/api/icp-profiles")
       .then((r) => (r.ok ? r.json() : { items: [] }))
-      .then((d) => setIcpProfiles((d.items ?? []).filter((p: IcpProfile) => p.status === "active")))
+      .then((d) => setIcpProfiles((d.items ?? []).filter((p: IcpProfile) => p.status === "active" || icpProfileIds.includes(p.id))))
       .catch(() => {});
     fetch("/api/campaigns")
       .then((r) => (r.ok ? r.json() : { items: [] }))
-      .then((d) => setCampaigns((d.items ?? []).filter((c: { status: string }) => c.status === "active")))
+      .then((d) => setCampaigns((d.items ?? []).filter((c: { status: string; id: string }) => c.status === "active" || c.id === event?.campaignId)))
       .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function toggleIcp(id: string) {
@@ -130,14 +184,16 @@ function CreateEventForm({ onCreated }: { onCreated: (ev: Event) => void }) {
     setError("");
     if (!form.name) { setError("Event name is required"); return; }
     setLoading(true);
-    const res = await fetch("/api/events", {
-      method: "POST",
+    const url = mode === "create" ? "/api/events" : `/api/events/${event!.id}`;
+    const method = mode === "create" ? "POST" : "PATCH";
+    const res = await fetch(url, {
+      method,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...form, campaignId: form.campaignId || null, icpProfileIds }),
     });
     setLoading(false);
     if (!res.ok) { setError((await res.json()).error ?? "Failed"); return; }
-    onCreated(await res.json());
+    onSaved(await res.json());
   }
 
   const selectedCampaign = campaigns.find((c) => c.id === form.campaignId);
@@ -186,7 +242,7 @@ function CreateEventForm({ onCreated }: { onCreated: (ev: Event) => void }) {
       {error && (
         <p className="text-xs text-[#DC2626] bg-[#fee2e2] border border-[#DC2626]/20 rounded-xl px-3 py-2">{error}</p>
       )}
-      <Button type="submit" loading={loading} className="w-full">Create Event</Button>
+      <Button type="submit" loading={loading} className="w-full">{mode === "create" ? "Create Event" : "Save Changes"}</Button>
     </form>
   );
 }

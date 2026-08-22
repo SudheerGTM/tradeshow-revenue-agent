@@ -22,8 +22,9 @@ Standard error shape: `{ "error": "message" }` with status 400 (validation), 401
 | Route | Method | Auth | Notes |
 |---|---|---|---|
 | `/api/events` | GET | any | `?accessible=true` scopes to caller's assigned events |
-| `/api/events` | POST | tenant_admin | |
-| `/api/events/:id` | PATCH | tenant_admin | |
+| `/api/events` | POST | tenant_admin | Accepts `campaignId` and `icpProfileIds[]` (Release 14.4) |
+| `/api/events/:id` | GET | any | Single event + `icpProfileIds[]` (Release 14.4) — used by the Edit Event form |
+| `/api/events/:id` | PATCH | tenant_admin | Accepts `campaignId` and `icpProfileIds[]` (Release 14.4) |
 | `/api/events/:id/costs` | GET | any | `{ costs: [], total }` |
 | `/api/events/:id/costs` | POST | manager+ | |
 | `/api/events/:id/costs/:costId` | PATCH / DELETE | manager+ | |

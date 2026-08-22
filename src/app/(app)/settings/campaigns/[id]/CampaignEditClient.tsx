@@ -20,12 +20,12 @@ type TestResult = {
 };
 
 export function CampaignEditClient({
-  campaign, assignedIcpProfileIds, allIcpProfiles, events,
+  campaign, assignedIcpProfileIds, allIcpProfiles, allEvents,
 }: {
   campaign: Campaign;
   assignedIcpProfileIds: string[];
   allIcpProfiles: IcpProfile[];
-  events: { id: string; name: string }[];
+  allEvents: { id: string; name: string; campaignId: string | null }[];
 }) {
   const toast = useToast();
   const [form, setForm] = useState({
@@ -34,8 +34,10 @@ export function CampaignEditClient({
   });
   const [status, setStatus] = useState(campaign.status);
   const [icpIds, setIcpIds] = useState<string[]>(assignedIcpProfileIds);
+  const [eventIds, setEventIds] = useState<string[]>(allEvents.filter((e) => e.campaignId === campaign.id).map((e) => e.id));
   const [saving, setSaving] = useState(false);
   const [savingIcps, setSavingIcps] = useState(false);
+  const [savingEvents, setSavingEvents] = useState(false);
   const [statusBusy, setStatusBusy] = useState(false);
 
   async function save() {
@@ -76,6 +78,35 @@ export function CampaignEditClient({
 
   function toggleIcp(id: string) {
     setIcpIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
+  }
+
+  function toggleEvent(id: string) {
+    setEventIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
+  }
+
+  // No bulk-assignment endpoint exists — each event's campaignId is set
+  // individually via the same PATCH /api/events/:id the Edit Event form
+  // uses. Only events whose membership actually changed are touched.
+  async function saveEvents() {
+    setSavingEvents(true);
+    const originalIds = new Set(allEvents.filter((e) => e.campaignId === campaign.id).map((e) => e.id));
+    const nextIds = new Set(eventIds);
+    const changed = allEvents.filter((e) => originalIds.has(e.id) !== nextIds.has(e.id));
+    try {
+      const results = await Promise.all(changed.map((ev) =>
+        fetch(`/api/events/${ev.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ campaignId: nextIds.has(ev.id) ? campaign.id : null }),
+        })
+      ));
+      if (results.some((r) => !r.ok)) throw new Error("Some events failed to update");
+      toast.success("Associated events saved");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to save associated events");
+    } finally {
+      setSavingEvents(false);
+    }
   }
 
   async function saveIcps() {
@@ -151,16 +182,28 @@ export function CampaignEditClient({
           <CalendarDays className="w-4 h-4 text-[#0F4C81]" />
           <p className="text-sm font-semibold text-[#0F172A]">Associated Events</p>
         </div>
-        {events.length === 0 ? (
-          <p className="text-xs text-[#94A3B8]">No events use this Campaign yet.</p>
+        {allEvents.length === 0 ? (
+          <p className="text-xs text-[#94A3B8]">No events exist yet — create one on the Events page first.</p>
         ) : (
-          <ul className="space-y-1.5">
-            {events.map((ev) => (
-              <li key={ev.id}>
-                <Link href={`/events/${ev.id}/report`} className="text-sm text-[#00B8D9] hover:text-[#009ab8]">{ev.name}</Link>
-              </li>
-            ))}
-          </ul>
+          <>
+            <div className="border border-[#E2E8F0] rounded-xl divide-y divide-[#F1F5F9]">
+              {allEvents.map((ev) => (
+                <div key={ev.id} className="flex items-center justify-between gap-2 px-3 py-2.5">
+                  <label className="flex items-center gap-2.5 text-sm text-[#0F172A] cursor-pointer flex-1">
+                    <input type="checkbox" checked={eventIds.includes(ev.id)} onChange={() => toggleEvent(ev.id)}
+                      className="rounded border-[#CBD5E1] text-[#00B8D9] focus:ring-[#00B8D9]" />
+                    {ev.name}
+                    {ev.campaignId && ev.campaignId !== campaign.id && (
+                      <span className="text-[10px] text-[#94A3B8]">(on another campaign)</span>
+                    )}
+                  </label>
+                  <Link href={`/events/${ev.id}/report`} className="text-xs text-[#00B8D9] hover:text-[#009ab8] shrink-0">Report →</Link>
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-[#94A3B8]">Selecting an event here moves it onto this Campaign (an event belongs to at most one Campaign at a time).</p>
+            <Button size="sm" onClick={saveEvents} loading={savingEvents}>Save Associated Events</Button>
+          </>
         )}
       </div>
 

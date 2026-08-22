@@ -1,7 +1,7 @@
 import { auth } from "@/lib/auth";
 import { redirect, notFound } from "next/navigation";
 import { db, schema } from "@/db";
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { getCampaign, getCampaignICPProfiles } from "@/lib/icp/icp-resolver";
 import { CampaignEditClient } from "./CampaignEditClient";
 
@@ -16,11 +16,13 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
   const campaign = await getCampaign(tenantId, id);
   if (!campaign) notFound();
 
-  const [assignedIcpProfiles, allIcpProfiles, events] = await Promise.all([
+  const [assignedIcpProfiles, allIcpProfiles, allEvents] = await Promise.all([
     getCampaignICPProfiles(tenantId, id),
     db.select().from(schema.icpProfiles).where(eq(schema.icpProfiles.tenantId, tenantId)).orderBy(schema.icpProfiles.name),
-    db.select({ id: schema.events.id, name: schema.events.name }).from(schema.events)
-      .where(and(eq(schema.events.campaignId, id), eq(schema.events.tenantId, tenantId))),
+    // Every tenant event, not just the ones already on this Campaign — the
+    // edit page lets an admin select/deselect membership from this side too.
+    db.select({ id: schema.events.id, name: schema.events.name, campaignId: schema.events.campaignId })
+      .from(schema.events).where(eq(schema.events.tenantId, tenantId)).orderBy(schema.events.name),
   ]);
 
   return (
@@ -28,7 +30,7 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
       campaign={campaign}
       assignedIcpProfileIds={assignedIcpProfiles.map((p) => p.id)}
       allIcpProfiles={allIcpProfiles}
-      events={events}
+      allEvents={allEvents}
     />
   );
 }
