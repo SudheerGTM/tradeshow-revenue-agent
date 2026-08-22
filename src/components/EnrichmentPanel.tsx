@@ -32,10 +32,17 @@ export function EnrichmentPanel({ leadId, userRole }: Props) {
   const [loading, setLoading] = useState(true);
   const [enriching, setEnriching] = useState(false);
   const [error, setError] = useState("");
+  const [apolloConnected, setApolloConnected] = useState(true);
 
   const canEnrich = userRole !== "booth_user";
 
   useEffect(() => { fetchEnrichment(); }, [leadId]);
+  useEffect(() => {
+    fetch("/api/apollo/status")
+      .then((res) => res.ok ? res.json() : { apolloConnected: true })
+      .then((data) => setApolloConnected(data.apolloConnected))
+      .catch(() => {});
+  }, []);
 
   async function fetchEnrichment() {
     setLoading(true);
@@ -104,6 +111,15 @@ export function EnrichmentPanel({ leadId, userRole }: Props) {
           <p className="text-[11px] text-[#94A3B8]">
             Last enriched: {new Date(company.updatedAt).toLocaleString()}
           </p>
+        )}
+
+        {!apolloConnected && (
+          <div className="bg-[#fee2e2] border border-[#DC2626]/20 rounded-xl px-3 py-2 flex items-start gap-2">
+            <AlertTriangle className="w-3.5 h-3.5 text-[#DC2626] shrink-0 mt-0.5" />
+            <p className="text-xs text-[#DC2626]">
+              Company Intelligence is configured but Apollo credentials are not connected in this tenant. Contact your administrator to connect Apollo.
+            </p>
+          </div>
         )}
 
         {error && (

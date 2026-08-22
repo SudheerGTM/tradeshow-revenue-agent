@@ -66,6 +66,7 @@ Standard error shape: `{ "error": "message" }` with status 400 (validation), 401
 |---|---|---|---|
 | `/api/enrichment` | GET | any | `?lead_id=` → `{ company, contact }` |
 | `/api/enrichment/enrich` | POST | manager+ | Triggers Apollo lookup |
+| `/api/apollo/status` | GET | any | `{ apolloConnected: boolean }` — whether `APOLLO_API_KEY` is configured. Same pattern as `/api/crm-sync/status` for HubSpot; consumed by `EnrichmentPanel.tsx` to show a proactive "not connected" notice. |
 
 ## Lead Scoring
 
