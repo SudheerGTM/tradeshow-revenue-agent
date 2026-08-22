@@ -27,3 +27,18 @@ export function toICPContext(profile: IcpProfile, config: ICPConfig): ICPContext
     config,
   };
 }
+
+/**
+ * Release 14.4 — unified targeting result. `icps` is always evaluated
+ * independently by a caller (OR semantics — one evaluateICPFitQualitative()
+ * call per entry, never merged into one combined config). See
+ * resolveTargetingContext() in icp-resolver.ts for how `source`/`contextId`
+ * are chosen: Event ICPs > Campaign ICPs > Tenant Default ICP > null.
+ */
+export type TargetingSource = "event" | "campaign" | "tenant_default";
+
+export interface TargetingContext {
+  source: TargetingSource;
+  contextId: string; // the event, campaign, or tenant id that produced this
+  icps: ICPContext[]; // always non-empty when this type is returned
+}

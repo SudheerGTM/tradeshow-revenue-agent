@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { isTenantAdmin } from "@/lib/permissions";
 import { logAudit } from "@/lib/audit";
-import { validateEventICPAssignment, ICPTenantMismatchError } from "@/lib/icp/icp-resolver";
+import { getEventICPProfiles, setEventICPProfiles, validateEventCampaignAssignment, ICPTenantMismatchError } from "@/lib/icp/icp-resolver";
 import { db, schema } from "@/db";
 import { eq, and } from "drizzle-orm";
 
@@ -20,22 +20,46 @@ export async function PATCH(
   const body = await req.json();
 
   const existing = await db
-    .select({ id: schema.events.id, icpProfileId: schema.events.icpProfileId })
+    .select({ id: schema.events.id })
     .from(schema.events)
     .where(and(eq(schema.events.id, id), eq(schema.events.tenantId, tenantId)))
     .limit(1);
 
   if (!existing.length) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  // icpProfileId is handled explicitly (validated against tenant ownership)
-  // rather than passed through with the rest of the body — never trust a
-  // client-supplied ICP ID directly.
-  const { icpProfileId, ...rest } = body as { icpProfileId?: string | null; [k: string]: unknown };
-  const icpAssignmentChanged = icpProfileId !== undefined && icpProfileId !== existing[0].icpProfileId;
+  // ICP and Campaign assignment are handled explicitly (validated against
+  // tenant ownership) rather than passed through with the rest of the body —
+  // never trust client-supplied IDs directly. Release 14.4: `icpProfileIds`
+  // (plural) is current; a legacy singular `icpProfileId` is still accepted
+  // for compatibility.
+  const { icpProfileId, icpProfileIds, campaignId, ...rest } = body as {
+    icpProfileId?: string | null; icpProfileIds?: string[]; campaignId?: string | null; [k: string]: unknown;
+  };
+  const icpFieldProvided = icpProfileIds !== undefined || icpProfileId !== undefined;
+  let icpAssignmentChanged = false;
 
-  if (icpAssignmentChanged) {
+  if (icpFieldProvided) {
+    const targetIcpIds = icpProfileIds ?? (icpProfileId ? [icpProfileId] : []);
+    const currentProfiles = await getEventICPProfiles(tenantId, id);
+    const currentIds = new Set(currentProfiles.map((p) => p.id));
+    const targetIds = new Set(targetIcpIds);
+    icpAssignmentChanged = currentIds.size !== targetIds.size || [...targetIds].some((tid) => !currentIds.has(tid));
+
+    if (icpAssignmentChanged) {
+      try {
+        await setEventICPProfiles(tenantId, id, targetIcpIds);
+      } catch (err) {
+        if (err instanceof ICPTenantMismatchError) {
+          return NextResponse.json({ error: err.message }, { status: 403 });
+        }
+        throw err;
+      }
+    }
+  }
+
+  if (campaignId !== undefined) {
     try {
-      await validateEventICPAssignment(tenantId, icpProfileId ?? null);
+      await validateEventCampaignAssignment(tenantId, campaignId);
     } catch (err) {
       if (err instanceof ICPTenantMismatchError) {
         return NextResponse.json({ error: err.message }, { status: 403 });
@@ -46,7 +70,7 @@ export async function PATCH(
 
   const [updated] = await db
     .update(schema.events)
-    .set({ ...rest, ...(icpProfileId !== undefined ? { icpProfileId: icpProfileId ?? null } : {}), updatedAt: new Date() })
+    .set({ ...rest, ...(campaignId !== undefined ? { campaignId } : {}), updatedAt: new Date() })
     .where(eq(schema.events.id, id))
     .returning();
 
@@ -60,13 +84,14 @@ export async function PATCH(
   });
 
   if (icpAssignmentChanged) {
+    const newProfiles = await getEventICPProfiles(tenantId, id);
     await logAudit({
       tenantId,
       userId: session.user.id,
       action: "event_icp_assigned",
       resourceType: "event",
       resourceId: id,
-      metadata: { icpProfileId: icpProfileId ?? null },
+      metadata: { icpProfileIds: newProfiles.map((p) => p.id) },
     });
   }
 

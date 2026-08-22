@@ -7,6 +7,7 @@ import {
   pgEnum,
   jsonb,
   index,
+  unique,
   boolean,
   date,
   doublePrecision,
@@ -193,14 +194,21 @@ export const events = pgTable(
     startDate: date("start_date"),
     endDate: date("end_date"),
     status: eventStatusEnum("status").notNull().default("upcoming"),
-    // Release 14.2 — nullable; null means "resolve the tenant's active default
-    // ICP profile instead" (see src/lib/icp/icp-resolver.ts).
+    // Release 14.2 — nullable; kept for backward compatibility only.
+    // Release 14.4: the source of truth for event targeting is now the
+    // event_icp_profiles join table (an event may have several ICPs) — see
+    // src/lib/icp/icp-resolver.ts `resolveTargetingContext`.
     icpProfileId: uuid("icp_profile_id").references((): AnyPgColumn => icpProfiles.id, { onDelete: "set null" }),
+    // Release 14.4 — optional Campaign this event belongs to. Event ICPs
+    // take precedence over Campaign ICPs when both are set (more specific
+    // targeting wins) — see resolveTargetingContext.
+    campaignId: uuid("campaign_id").references((): AnyPgColumn => campaigns.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     index("events_tenant_idx").on(t.tenantId),
+    index("events_campaign_idx").on(t.campaignId),
     index("events_slug_idx").on(t.tenantId, t.slug),
     index("events_icp_profile_idx").on(t.icpProfileId),
   ]
@@ -1100,3 +1108,74 @@ export const icpProfiles = pgTable(
 export type IcpProfile = typeof icpProfiles.$inferSelect;
 export type NewIcpProfile = typeof icpProfiles.$inferInsert;
 export type IcpStatus = "draft" | "active" | "inactive";
+
+// ─── Event <-> ICP Profile (Release 14.4 — unified multi-ICP targeting) ────────
+// An event may target multiple ICPs (OR semantics — src/lib/icp/icp-resolver.ts
+// `resolveTargetingContext`). events.icpProfileId above is kept, unmodified,
+// for backward compatibility, but is no longer the write target for new
+// assignments once this table exists — see drizzle/0019_event_icp_profiles.sql.
+export const eventIcpProfiles = pgTable(
+  "event_icp_profiles",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    eventId: uuid("event_id").notNull().references(() => events.id, { onDelete: "cascade" }),
+    icpProfileId: uuid("icp_profile_id").notNull().references(() => icpProfiles.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("event_icp_profiles_event_idx").on(t.eventId),
+    index("event_icp_profiles_icp_idx").on(t.icpProfileId),
+    unique("event_icp_profiles_unique").on(t.eventId, t.icpProfileId),
+  ]
+);
+
+export type EventIcpProfile = typeof eventIcpProfiles.$inferSelect;
+
+// ─── Campaigns (Release 14.4 — unified multi-ICP targeting) ───────────────────
+// A GTM initiative, distinct from an Event ("where/when did we engage the
+// prospect") — a Campaign answers "which GTM initiative are we running."
+// Lifecycle is explicit (draft/active/completed/archived), never
+// date-derived — see the R14.4 brief §13 and src/lib/event-status.ts's
+// comment for why: avoids recreating the same ambiguity that motivated
+// that fix for events.
+export const campaignStatusEnum = pgEnum("campaign_status", ["draft", "active", "completed", "archived"]);
+
+export const campaigns = pgTable(
+  "campaigns",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 255 }).notNull(),
+    description: text("description"),
+    status: campaignStatusEnum("status").notNull().default("draft"),
+    startDate: date("start_date"),
+    endDate: date("end_date"),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("campaigns_tenant_idx").on(t.tenantId)]
+);
+
+export type Campaign = typeof campaigns.$inferSelect;
+export type NewCampaign = typeof campaigns.$inferInsert;
+
+// A Campaign may target multiple ICPs (OR semantics), same pattern as
+// event_icp_profiles — no config is copied into the Campaign, only a
+// reference to the reusable tenant ICP Profile.
+export const campaignIcpProfiles = pgTable(
+  "campaign_icp_profiles",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    campaignId: uuid("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
+    icpProfileId: uuid("icp_profile_id").notNull().references(() => icpProfiles.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("campaign_icp_profiles_campaign_idx").on(t.campaignId),
+    index("campaign_icp_profiles_icp_idx").on(t.icpProfileId),
+    unique("campaign_icp_profiles_unique").on(t.campaignId, t.icpProfileId),
+  ]
+);
+
+export type CampaignIcpProfile = typeof campaignIcpProfiles.$inferSelect;

@@ -3,7 +3,7 @@ import { auth } from "@/lib/auth";
 import { isTenantAdmin } from "@/lib/permissions";
 import { logAudit } from "@/lib/audit";
 import { getAccessibleEventIds } from "@/lib/event-access";
-import { validateEventICPAssignment, ICPTenantMismatchError } from "@/lib/icp/icp-resolver";
+import { setEventICPProfiles, validateEventCampaignAssignment, ICPTenantMismatchError } from "@/lib/icp/icp-resolver";
 import { db, schema } from "@/db";
 import { eq, and, inArray } from "drizzle-orm";
 
@@ -51,15 +51,21 @@ export async function POST(req: NextRequest) {
   if (!tenantId) return NextResponse.json({ error: "No tenant" }, { status: 400 });
 
   const body = await req.json();
-  const { name, location, startDate, endDate, icpProfileId } = body as {
-    name: string; location?: string; startDate?: string; endDate?: string; icpProfileId?: string | null;
+  // Release 14.4 — an event may target multiple ICPs (OR semantics).
+  // `icpProfileIds` is the current field; a legacy singular `icpProfileId`
+  // is still accepted and folded into a one-item array for compatibility.
+  const { name, location, startDate, endDate, icpProfileId, icpProfileIds, campaignId } = body as {
+    name: string; location?: string; startDate?: string; endDate?: string;
+    icpProfileId?: string | null; icpProfileIds?: string[]; campaignId?: string | null;
   };
 
   if (!name) return NextResponse.json({ error: "name is required" }, { status: 400 });
 
-  // Never trust a client-supplied ICP ID without validating tenant ownership.
+  const targetIcpIds = icpProfileIds ?? (icpProfileId ? [icpProfileId] : []);
+
+  // Never trust a client-supplied Campaign ID without validating tenant ownership.
   try {
-    await validateEventICPAssignment(tenantId, icpProfileId ?? null);
+    await validateEventCampaignAssignment(tenantId, campaignId ?? null);
   } catch (err) {
     if (err instanceof ICPTenantMismatchError) {
       return NextResponse.json({ error: err.message }, { status: 403 });
@@ -71,8 +77,23 @@ export async function POST(req: NextRequest) {
 
   const [event] = await db
     .insert(schema.events)
-    .values({ tenantId, name, slug, location, startDate, endDate, icpProfileId: icpProfileId ?? null })
+    .values({ tenantId, name, slug, location, startDate, endDate, campaignId: campaignId ?? null })
     .returning();
+
+  // Never trust client-supplied ICP IDs without validating tenant ownership.
+  // If this fails, roll back the just-created event rather than leaving it
+  // with no targeting the caller didn't ask for.
+  if (targetIcpIds.length > 0) {
+    try {
+      await setEventICPProfiles(tenantId, event.id, targetIcpIds);
+    } catch (err) {
+      await db.delete(schema.events).where(eq(schema.events.id, event.id));
+      if (err instanceof ICPTenantMismatchError) {
+        return NextResponse.json({ error: err.message }, { status: 403 });
+      }
+      throw err;
+    }
+  }
 
   await logAudit({
     tenantId,
@@ -83,14 +104,14 @@ export async function POST(req: NextRequest) {
     metadata: { name, slug },
   });
 
-  if (icpProfileId) {
+  if (targetIcpIds.length > 0) {
     await logAudit({
       tenantId,
       userId: session.user.id,
       action: "event_icp_assigned",
       resourceType: "event",
       resourceId: event.id,
-      metadata: { icpProfileId },
+      metadata: { icpProfileIds: targetIcpIds },
     });
   }
 

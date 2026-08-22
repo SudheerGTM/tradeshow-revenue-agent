@@ -12,10 +12,10 @@
  */
 
 import { db, schema } from "@/db";
-import { and, eq, desc } from "drizzle-orm";
-import type { IcpProfile } from "@/db/schema";
+import { and, eq, desc, inArray } from "drizzle-orm";
+import type { IcpProfile, Campaign } from "@/db/schema";
 import { ICPConfigSchema, type ICPConfig } from "./schema";
-import { toICPContext, type ICPContext } from "./types";
+import { toICPContext, type ICPContext, type TargetingContext } from "./types";
 
 export class ICPValidationError extends Error {
   constructor(message: string) {
@@ -133,13 +133,38 @@ export async function assertICPProfileOwnedByTenant(tenantId: string, icpProfile
 }
 
 /**
- * Server-side guard for assigning an ICP profile to an event. Passing
- * `icpProfileId: null` (clearing the assignment) is always valid and
- * returns without checking anything.
+ * Release 14.4 — Event Multi-ICP. Tenant-scoped read of every ICP profile
+ * currently assigned to an event via the event_icp_profiles join table
+ * (the source of truth for event targeting going forward — see
+ * resolveTargetingContext below). Returns [] if none assigned.
  */
-export async function validateEventICPAssignment(tenantId: string, icpProfileId: string | null): Promise<void> {
-  if (!icpProfileId) return;
-  await assertICPProfileOwnedByTenant(tenantId, icpProfileId);
+export async function getEventICPProfiles(tenantId: string, eventId: string): Promise<IcpProfile[]> {
+  const rows = await db
+    .select({ profile: schema.icpProfiles })
+    .from(schema.eventIcpProfiles)
+    .innerJoin(schema.icpProfiles, eq(schema.eventIcpProfiles.icpProfileId, schema.icpProfiles.id))
+    .where(and(eq(schema.eventIcpProfiles.eventId, eventId), eq(schema.icpProfiles.tenantId, tenantId)));
+  return rows.map((r) => r.profile);
+}
+
+/**
+ * Replaces an event's full set of assigned ICP profiles. Validates every ID
+ * against tenant ownership before writing anything — a single cross-tenant
+ * ID in the list rejects the whole call, nothing is partially applied.
+ * Passing an empty array clears all assignments.
+ */
+export async function setEventICPProfiles(tenantId: string, eventId: string, icpProfileIds: string[]): Promise<void> {
+  const uniqueIds = [...new Set(icpProfileIds)];
+  for (const id of uniqueIds) {
+    await assertICPProfileOwnedByTenant(tenantId, id);
+  }
+
+  await db.transaction(async (tx) => {
+    await tx.delete(schema.eventIcpProfiles).where(eq(schema.eventIcpProfiles.eventId, eventId));
+    if (uniqueIds.length > 0) {
+      await tx.insert(schema.eventIcpProfiles).values(uniqueIds.map((icpProfileId) => ({ eventId, icpProfileId })));
+    }
+  });
 }
 
 /**
@@ -183,4 +208,127 @@ export async function deactivateICPProfile(tenantId: string, icpProfileId: strin
   }
 
   return updated ?? profile;
+}
+
+// ─── Campaigns (Release 14.4) ──────────────────────────────────────────────
+
+/** Tenant-scoped single-campaign lookup. Returns null on any tenant mismatch. */
+export async function getCampaign(tenantId: string, campaignId: string): Promise<Campaign | null> {
+  const rows = await db
+    .select()
+    .from(schema.campaigns)
+    .where(and(eq(schema.campaigns.id, campaignId), eq(schema.campaigns.tenantId, tenantId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+/** Same shape as assertICPProfileOwnedByTenant, for the same reason — never trust a client-supplied Campaign ID without this. */
+export async function assertCampaignOwnedByTenant(tenantId: string, campaignId: string): Promise<Campaign> {
+  const campaign = await getCampaign(tenantId, campaignId);
+  if (!campaign) {
+    throw new ICPTenantMismatchError(
+      "Campaign does not exist or does not belong to this tenant — cross-tenant assignment is not allowed."
+    );
+  }
+  return campaign;
+}
+
+/** Every ICP profile currently assigned to a Campaign. Returns [] if none. */
+export async function getCampaignICPProfiles(tenantId: string, campaignId: string): Promise<IcpProfile[]> {
+  const rows = await db
+    .select({ profile: schema.icpProfiles })
+    .from(schema.campaignIcpProfiles)
+    .innerJoin(schema.icpProfiles, eq(schema.campaignIcpProfiles.icpProfileId, schema.icpProfiles.id))
+    .where(and(eq(schema.campaignIcpProfiles.campaignId, campaignId), eq(schema.icpProfiles.tenantId, tenantId)));
+  return rows.map((r) => r.profile);
+}
+
+/** Replaces a Campaign's full set of assigned ICP profiles. Same all-or-nothing validation as setEventICPProfiles. */
+export async function setCampaignICPProfiles(tenantId: string, campaignId: string, icpProfileIds: string[]): Promise<void> {
+  const uniqueIds = [...new Set(icpProfileIds)];
+  for (const id of uniqueIds) {
+    await assertICPProfileOwnedByTenant(tenantId, id);
+  }
+
+  await db.transaction(async (tx) => {
+    await tx.delete(schema.campaignIcpProfiles).where(eq(schema.campaignIcpProfiles.campaignId, campaignId));
+    if (uniqueIds.length > 0) {
+      await tx.insert(schema.campaignIcpProfiles).values(uniqueIds.map((icpProfileId) => ({ campaignId, icpProfileId })));
+    }
+  });
+}
+
+/**
+ * Server-side guard for assigning a Campaign to an event. Passing
+ * `campaignId: null` (clearing) is always valid and returns without checking.
+ */
+export async function validateEventCampaignAssignment(tenantId: string, campaignId: string | null): Promise<void> {
+  if (!campaignId) return;
+  await assertCampaignOwnedByTenant(tenantId, campaignId);
+}
+
+/**
+ * Release 14.4 — the single unified targeting resolver. Supersedes
+ * `getActiveICPForEvent` as the entry point future agent integrations
+ * should call (getActiveICPForEvent is kept, unmodified, for any existing
+ * caller — there are none in production agent code today, see docs/
+ * ICP-ARCHITECTURE.md "Explicitly not built yet").
+ *
+ * Resolution order — more specific targeting wins:
+ *   1. Event ICPs (event_icp_profiles) — if the event has any, use them.
+ *   2. Campaign ICPs (campaign_icp_profiles) — if the event has no ICPs of
+ *      its own but belongs to a Campaign that has ICPs, use those. Campaign
+ *      ICPs are a fallback for that event, not deleted or overridden.
+ *   3. Tenant Default ICP — if neither of the above resolves.
+ *   4. null — nothing configured.
+ *
+ * Every ICP in the returned array must be evaluated independently (OR
+ * semantics) — this function does not merge criteria or pick a winner;
+ * that's a future agent-layer concern (R14.5+), not this resolver's job.
+ */
+export async function resolveTargetingContext(tenantId: string, eventId: string): Promise<TargetingContext | null> {
+  const [event] = await db
+    .select({ id: schema.events.id, campaignId: schema.events.campaignId })
+    .from(schema.events)
+    .where(and(eq(schema.events.id, eventId), eq(schema.events.tenantId, tenantId)))
+    .limit(1);
+
+  if (event) {
+    const eventIcps = await getEventICPProfiles(tenantId, event.id);
+    if (eventIcps.length > 0) {
+      return {
+        source: "event",
+        contextId: event.id,
+        icps: eventIcps.map((p) => toICPContext(p, getICPConfiguration(p))),
+      };
+    }
+
+    if (event.campaignId) {
+      const campaignIcps = await getCampaignICPProfiles(tenantId, event.campaignId);
+      if (campaignIcps.length > 0) {
+        return {
+          source: "campaign",
+          contextId: event.campaignId,
+          icps: campaignIcps.map((p) => toICPContext(p, getICPConfiguration(p))),
+        };
+      }
+    }
+  }
+
+  const [tenant] = await db
+    .select({ defaultIcpProfileId: schema.tenants.defaultIcpProfileId })
+    .from(schema.tenants)
+    .where(eq(schema.tenants.id, tenantId))
+    .limit(1);
+
+  if (!tenant?.defaultIcpProfileId) return null;
+
+  const defaultProfile = await getICPProfile(tenantId, tenant.defaultIcpProfileId);
+  if (!defaultProfile || defaultProfile.status !== "active") return null;
+
+  return {
+    source: "tenant_default",
+    contextId: tenantId,
+    icps: [toICPContext(defaultProfile, getICPConfiguration(defaultProfile))],
+  };
 }
