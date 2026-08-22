@@ -1,6 +1,8 @@
 # Release 14.3.1 Hardening + Tenant Admin Improvements + R14.4 Campaign/Multi-ICP Foundation — Assessment
 
-**Assessment only. No implementation has been done.** This is the required output of the "R14.3.1 Hardening + R14.4 Campaign/Multi-ICP Foundation" brief's Phase A — current-state inspection and proposed architecture, for explicit user approval before any code is written. Once approved, this will split into two implementation documents per the brief's §23: `docs/RELEASE-14.3.1-HARDENING.md` (event status, Platform Admin, Tenant Settings, Plan & Usage) and `docs/RELEASE-14.4-CAMPAIGN-MULTI-ICP.md` (Campaign entity).
+> **Superseded 2026-08-22.** This assessment's R14.3.1 sections (A–E) were implemented as designed — see **[docs/RELEASE-14.3.1-HARDENING.md](RELEASE-14.3.1-HARDENING.md)**. Its R14.4 sections (F–S) proposed a **Campaign-only** multi-ICP design (Campaign overrides Event ICP) that was explicitly superseded before implementation by a follow-up brief: Events *also* gained multi-ICP support, and the precedence was corrected to **Event ICPs > Campaign ICPs** (more specific wins), not the reverse. What was actually built is documented in **[docs/RELEASE-14.4-UNIFIED-TARGETING.md](RELEASE-14.4-UNIFIED-TARGETING.md)** — treat that file as authoritative for R14.4, not §F–S below. This document is kept for historical record of the reasoning that led there.
+
+**Assessment only. No implementation had been done at the time this was written.** This was the required output of the "R14.3.1 Hardening + R14.4 Campaign/Multi-ICP Foundation" brief's Phase A — current-state inspection and proposed architecture, for explicit user approval before any code was written.
 
 Compiled 2026-08-22 against `main` (`7e1a9e0`) by direct code inspection (four parallel read-only investigations), not inference.
 
