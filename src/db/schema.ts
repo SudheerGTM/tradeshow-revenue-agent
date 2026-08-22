@@ -53,6 +53,10 @@ export const tenants = pgTable("tenants", {
   // no explicit icp_profile_id of its own. Must itself be "active" to
   // resolve — see src/lib/icp/icp-resolver.ts.
   defaultIcpProfileId: uuid("default_icp_profile_id").references((): AnyPgColumn => icpProfiles.id, { onDelete: "set null" }),
+  // Release 14.3.1 — lightweight entitlement model (src/lib/plans.ts). Not a
+  // FK to a `plans` table — there's only one plan today, so this is just a
+  // lookup key with a safe default, not a real billing relationship.
+  planName: varchar("plan_name", { length: 50 }).notNull().default("trade_show_pro"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

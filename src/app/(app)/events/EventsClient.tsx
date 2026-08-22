@@ -9,11 +9,8 @@ import { Modal } from "@/components/ui/Modal";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Input, Select } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
+import { getEventDisplayStatus } from "@/lib/event-status";
 import type { Event, IcpProfile } from "@/db/schema";
-
-const STATUS_COLORS: Record<string, "green" | "blue" | "gray" | "red"> = {
-  active: "green", upcoming: "blue", completed: "gray", cancelled: "red",
-};
 
 export function EventsClient({ initial, canCreate }: { initial: Event[]; canCreate: boolean }) {
   const [events, setEvents] = useState<Event[]>(initial);
@@ -53,11 +50,13 @@ export function EventsClient({ initial, canCreate }: { initial: Event[]; canCrea
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {events.map((ev) => (
+          {events.map((ev) => {
+            const displayStatus = getEventDisplayStatus(ev);
+            return (
             <div key={ev.id} className="bg-white border border-[#E2E8F0] rounded-xl p-5 space-y-3 shadow-sm">
               <div className="flex items-start justify-between gap-2">
                 <h3 className="text-sm font-semibold text-[#0F172A] leading-tight">{ev.name}</h3>
-                <Badge variant={STATUS_COLORS[ev.status] ?? "gray"}>{ev.status}</Badge>
+                <Badge variant={displayStatus.color}>{displayStatus.label}</Badge>
               </div>
               {ev.location && (
                 <div className="flex items-center gap-1.5 text-xs text-[#475569]">
@@ -85,7 +84,8 @@ export function EventsClient({ initial, canCreate }: { initial: Event[]; canCrea
                 </Link>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

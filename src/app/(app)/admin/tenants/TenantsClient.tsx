@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { Plus, Building2, RefreshCw } from "lucide-react";
 import { Badge, roleBadge, statusBadge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -8,8 +9,10 @@ import { Modal } from "@/components/ui/Modal";
 import { PageHeader } from "@/components/ui/PageHeader";
 import type { Tenant } from "@/db/schema";
 
-export function TenantsClient({ initial }: { initial: Tenant[] }) {
-  const [tenants, setTenants] = useState<Tenant[]>(initial);
+type TenantWithEventCount = Tenant & { eventCount: number };
+
+export function TenantsClient({ initial }: { initial: TenantWithEventCount[] }) {
+  const [tenants, setTenants] = useState<TenantWithEventCount[]>(initial);
   const [showCreate, setShowCreate] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
 
@@ -23,13 +26,13 @@ export function TenantsClient({ initial }: { initial: Tenant[] }) {
     });
     if (res.ok) {
       const updated: Tenant = await res.json();
-      setTenants((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+      setTenants((prev) => prev.map((t) => (t.id === updated.id ? { ...updated, eventCount: t.eventCount } : t)));
     }
     setTogglingId(null);
   }
 
   function onCreated(tenant: Tenant) {
-    setTenants((prev) => [tenant, ...prev]);
+    setTenants((prev) => [{ ...tenant, eventCount: 0 }, ...prev]);
     setShowCreate(false);
   }
 
@@ -72,7 +75,7 @@ export function TenantsClient({ initial }: { initial: Tenant[] }) {
                 <th className="px-5 py-3 font-medium">Name</th>
                 <th className="px-5 py-3 font-medium">Slug</th>
                 <th className="px-5 py-3 font-medium">Subdomain</th>
-                <th className="px-5 py-3 font-medium">Event</th>
+                <th className="px-5 py-3 font-medium">Events</th>
                 <th className="px-5 py-3 font-medium">Status</th>
                 <th className="px-5 py-3 font-medium">Created</th>
                 <th className="px-5 py-3 font-medium"></th>
@@ -81,10 +84,12 @@ export function TenantsClient({ initial }: { initial: Tenant[] }) {
             <tbody className="divide-y divide-gray-800">
               {tenants.map((t) => (
                 <tr key={t.id} className="hover:bg-gray-800/40 transition">
-                  <td className="px-5 py-3.5 font-medium text-white">{t.name}</td>
+                  <td className="px-5 py-3.5 font-medium">
+                    <Link href={`/admin/tenants/${t.id}`} className="text-white hover:text-indigo-400 transition">{t.name}</Link>
+                  </td>
                   <td className="px-5 py-3.5 text-gray-400 font-mono text-xs">{t.slug}</td>
                   <td className="px-5 py-3.5 text-gray-400 font-mono text-xs">{t.subdomain}</td>
-                  <td className="px-5 py-3.5 text-gray-400">{t.eventName ?? "—"}</td>
+                  <td className="px-5 py-3.5 text-gray-400">{t.eventCount} {t.eventCount === 1 ? "Event" : "Events"}</td>
                   <td className="px-5 py-3.5">
                     <Badge variant={statusBadge(t.status)}>
                       {t.status}

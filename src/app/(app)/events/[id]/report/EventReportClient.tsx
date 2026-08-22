@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowLeft, FileSpreadsheet, FileText, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
+import { getEventDisplayStatus } from "@/lib/event-status";
 
 interface ReportData {
   event: { id: string; name: string; location: string | null; startDate: string | null; endDate: string | null; status: string };
@@ -99,7 +100,7 @@ export function EventReportClient({ eventId, userRole }: { eventId: string; user
       {/* Event Overview */}
       <ReportSection title="Event Overview">
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Status"><Badge variant="blue">{event.status}</Badge></Field>
+          <Field label="Status">{(() => { const s = getEventDisplayStatus(event); return <Badge variant={s.color}>{s.label}</Badge>; })()}</Field>
           <Field label="Location" value={event.location ?? "—"} />
           <Field label="Start Date" value={event.startDate ?? "—"} />
           <Field label="End Date" value={event.endDate ?? "—"} />

@@ -11,8 +11,10 @@ import { RecentActivityCard, type ActivityRow } from "@/components/admin/RecentA
 import { CurrentEventCard, type CurrentEventData } from "@/components/admin/CurrentEventCard";
 import { TenantHealthCard, type TenantHealthData } from "@/components/admin/TenantHealthCard";
 import { QuickActionsPanel } from "@/components/admin/QuickActionsPanel";
-import { SubscriptionPlaceholderCard } from "@/components/admin/SubscriptionPlaceholderCard";
+import { PlanUsageCard, type PlanUsageMetric } from "@/components/admin/PlanUsageCard";
+import { getPlan } from "@/lib/plans";
 import { Building2, Users, CalendarDays, Target, Star, Briefcase, TrendingUp, Zap } from "lucide-react";
+import Link from "next/link";
 
 const BUSINESS_ACTIONS = [
   "lead.created", "lead_score_generated", "lead_score_regenerated",
@@ -78,6 +80,48 @@ export default async function TenantSettingsPage() {
     { icon: Zap, label: "Expected Revenue", value: fmtGBP(parseFloat(oppRow?.expectedRevenue ?? "0")), color: "#16A34A", bg: "#dcfce7" },
   ];
 
+  // ── Plan & Usage (Release 14.3.1) — real numbers, no billing enforcement ──
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  const [leadsThisMonthRow] = await db.select({ count: sql<number>`count(*)::int` }).from(schema.leads)
+    .where(and(eq(schema.leads.tenantId, tenantId), sql`${schema.leads.createdAt} >= ${monthStart}`));
+
+  const [workflowRunsThisMonthRow] = await db.select({ count: sql<number>`count(*)::int` }).from(schema.workflowRuns)
+    .where(and(eq(schema.workflowRuns.tenantId, tenantId), sql`${schema.workflowRuns.createdAt} >= ${monthStart}`));
+
+  const [enrichmentCallsRow] = await db.select({ count: sql<number>`count(*)::int` }).from(schema.auditLogs)
+    .where(and(eq(schema.auditLogs.tenantId, tenantId), eq(schema.auditLogs.action, "enrichment_started"), sql`${schema.auditLogs.createdAt} >= ${monthStart}`));
+  const [enrichmentCachedRow] = await db.select({ count: sql<number>`count(*)::int` }).from(schema.auditLogs)
+    .where(and(eq(schema.auditLogs.tenantId, tenantId), eq(schema.auditLogs.action, "enrichment_skipped_cached"), sql`${schema.auditLogs.createdAt} >= ${monthStart}`));
+
+  const [voiceStorageRow] = await db.select({ bytes: sql<string>`coalesce(sum(cast(nullif(file_size_bytes, '') as bigint)), 0)` }).from(schema.voiceNotes)
+    .where(eq(schema.voiceNotes.tenantId, tenantId));
+  const [cardStorageRow] = await db.select({ bytes: sql<string>`coalesce(sum(cast(nullif(file_size_bytes, '') as bigint)), 0)` }).from(schema.businessCardImages)
+    .where(eq(schema.businessCardImages.tenantId, tenantId));
+  const storageGB = (parseFloat(voiceStorageRow?.bytes ?? "0") + parseFloat(cardStorageRow?.bytes ?? "0")) / (1024 * 1024 * 1024);
+
+  const [icpProfileCountRow] = await db.select({ count: sql<number>`count(*)::int` }).from(schema.icpProfiles)
+    .where(eq(schema.icpProfiles.tenantId, tenantId));
+
+  // ── Targeting summary (Release 14.3.1) ────────────────────────────────────
+  const [activeIcpCountRow] = await db.select({ count: sql<number>`count(*)::int` }).from(schema.icpProfiles)
+    .where(and(eq(schema.icpProfiles.tenantId, tenantId), eq(schema.icpProfiles.status, "active")));
+  const defaultIcp = tenant.defaultIcpProfileId
+    ? (await db.select({ name: schema.icpProfiles.name }).from(schema.icpProfiles).where(eq(schema.icpProfiles.id, tenant.defaultIcpProfileId)).limit(1))[0]
+    : undefined;
+
+  const plan = getPlan(tenant.planName);
+  const planUsage: PlanUsageMetric[] = [
+    { label: "Users", used: userCountRow?.count ?? 0, limit: plan.maxUsers, suffix: "" },
+    { label: "Leads", used: leadsThisMonthRow?.count ?? 0, limit: plan.monthlyLeadLimit, suffix: " this month" },
+    { label: "AI Workflow Runs", used: workflowRunsThisMonthRow?.count ?? 0, limit: plan.monthlyWorkflowLimit, suffix: " this month" },
+    { label: "Enrichment Usage", used: enrichmentCallsRow?.count ?? 0, limit: plan.enrichmentLimit, suffix: "", detail: `${enrichmentCachedRow?.count ?? 0} cached reuse (not counted)` },
+    { label: "Storage", used: Math.round(storageGB * 100) / 100, limit: plan.storageLimitGB, unit: "GB" },
+    { label: "Events", used: eventCountRow?.count ?? 0, limit: plan.eventLimit, suffix: "" },
+    { label: "ICP Profiles", used: icpProfileCountRow?.count ?? 0, limit: plan.icpProfileLimit, suffix: "" },
+  ];
+
   // ── Current Event — prefer active, else most recently scheduled/created ──
   const [activeEvent] = await db.select().from(schema.events)
     .where(and(eq(schema.events.tenantId, tenantId), eq(schema.events.status, "active")))
@@ -113,6 +157,8 @@ export default async function TenantSettingsPage() {
       id: currentEvent.id,
       name: currentEvent.name,
       status: currentEvent.status,
+      startDate: currentEvent.startDate,
+      endDate: currentEvent.endDate,
       leadsCaptured: eventLeadRow?.count ?? 0,
       qualifiedLeads: eventQualifiedRow?.count ?? 0,
       opportunities: eventOppRow?.count ?? 0,
@@ -240,64 +286,99 @@ export default async function TenantSettingsPage() {
   ];
 
   return (
-    <div className="space-y-6 max-w-5xl">
+    <div className="space-y-8 max-w-5xl">
       <PageHeader
         title="Tenant Settings"
         description="Details about your organisation on this platform"
       />
 
-      {/* Team Performance */}
-      <div>
-        <p className="text-xs font-semibold text-[#475569] uppercase tracking-wider mb-3">Team Performance</p>
-        <KpiGrid items={kpis} />
-      </div>
+      {/* ── Overview ─────────────────────────────────────────────────────── */}
+      <SettingsSection title="Overview">
+        <div className="bg-white border border-[#E2E8F0] rounded-2xl shadow-sm divide-y divide-[#F1F5F9]">
+          <div className="px-4 sm:px-6 py-4 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-[#dbeafe] flex items-center justify-center shrink-0">
+              <Building2 className="w-5 h-5 text-[#0F4C81]" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-[#0F172A] truncate">{tenant.name}</p>
+              <Badge variant={statusBadge(tenant.status)} className="mt-1">{tenant.status}</Badge>
+            </div>
+          </div>
 
-      {/* Current Event */}
-      <CurrentEventCard event={currentEventData} />
+          {fields.map(({ label, value, mono }) => (
+            <div key={label} className="px-4 sm:px-6 py-4 flex items-center justify-between gap-3">
+              <span className="text-sm text-[#94A3B8] shrink-0">{label}</span>
+              <span className={`text-sm text-[#0F172A] text-right truncate ${mono ? "font-mono text-xs" : ""}`}>{value}</span>
+            </div>
+          ))}
 
-      {/* Tenant Health + Quick Actions */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        <TenantHealthCard health={health} />
+          <div className="px-4 sm:px-6 py-4 flex items-center justify-between gap-3">
+            <span className="text-sm text-[#94A3B8] shrink-0">Tenant ID</span>
+            <span className="text-xs text-[#94A3B8] font-mono truncate">{tenant.id}</span>
+          </div>
+        </div>
+
+        <CurrentEventCard event={currentEventData} />
+
+        <div>
+          <p className="text-xs font-semibold text-[#475569] uppercase tracking-wider mb-3">Team Performance</p>
+          <KpiGrid items={kpis} />
+        </div>
+      </SettingsSection>
+
+      {/* ── Targeting ────────────────────────────────────────────────────── */}
+      <SettingsSection title="Targeting">
+        <div className="bg-white border border-[#E2E8F0] rounded-2xl shadow-sm p-4 sm:p-5">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+              <p className="text-[10px] text-[#94A3B8] uppercase tracking-wider">Tenant Default ICP</p>
+              <p className="text-sm font-medium text-[#0F172A] mt-1">{defaultIcp?.name ?? "— none set"}</p>
+            </div>
+            <div>
+              <p className="text-[10px] text-[#94A3B8] uppercase tracking-wider">ICP Profiles</p>
+              <p className="text-sm font-medium text-[#0F172A] mt-1">{icpProfileCountRow?.count ?? 0} total ({activeIcpCountRow?.count ?? 0} active)</p>
+            </div>
+            <div>
+              <p className="text-[10px] text-[#94A3B8] uppercase tracking-wider">Campaigns</p>
+              <p className="text-sm font-medium text-[#0F172A] mt-1">— not yet available</p>
+            </div>
+          </div>
+          <Link href="/settings/icp" className="inline-block mt-4 text-xs text-[#00B8D9] hover:text-[#009ab8] font-medium">
+            Manage ICP Configuration →
+          </Link>
+        </div>
+      </SettingsSection>
+
+      {/* ── Platform Health ──────────────────────────────────────────────── */}
+      <SettingsSection title="Platform Health">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          <TenantHealthCard health={health} />
+          <IntegrationsStatusCard integrations={integrations} />
+        </div>
+        <RecentActivityCard rows={activityRows} />
+      </SettingsSection>
+
+      {/* ── Administration ───────────────────────────────────────────────── */}
+      <SettingsSection title="Administration">
         <QuickActionsPanel
           currentEventId={currentEventData?.id ?? null}
           hubspotConfigured={!!process.env.HUBSPOT_ACCESS_TOKEN}
           apolloConfigured={!!process.env.APOLLO_API_KEY}
         />
-      </div>
+        <PlanUsageCard plan={plan} usage={planUsage} />
+      </SettingsSection>
+    </div>
+  );
+}
 
-      {/* Integrations + Recent Activity */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        <IntegrationsStatusCard integrations={integrations} />
-        <RecentActivityCard rows={activityRows} />
-      </div>
-
-      {/* Subscription placeholder */}
-      <SubscriptionPlaceholderCard />
-
-      {/* Tenant details */}
-      <div className="bg-white border border-[#E2E8F0] rounded-2xl shadow-sm divide-y divide-[#F1F5F9]">
-        <div className="px-4 sm:px-6 py-4 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-[#dbeafe] flex items-center justify-center shrink-0">
-            <Building2 className="w-5 h-5 text-[#0F4C81]" />
-          </div>
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-[#0F172A] truncate">{tenant.name}</p>
-            <Badge variant={statusBadge(tenant.status)} className="mt-1">{tenant.status}</Badge>
-          </div>
-        </div>
-
-        {fields.map(({ label, value, mono }) => (
-          <div key={label} className="px-4 sm:px-6 py-4 flex items-center justify-between gap-3">
-            <span className="text-sm text-[#94A3B8] shrink-0">{label}</span>
-            <span className={`text-sm text-[#0F172A] text-right truncate ${mono ? "font-mono text-xs" : ""}`}>{value}</span>
-          </div>
-        ))}
-
-        <div className="px-4 sm:px-6 py-4 flex items-center justify-between gap-3">
-          <span className="text-sm text-[#94A3B8] shrink-0">Tenant ID</span>
-          <span className="text-xs text-[#94A3B8] font-mono truncate">{tenant.id}</span>
-        </div>
-      </div>
+// Release 14.3.1 — groups existing cards under a conceptual heading
+// (Overview / Targeting / Platform Health / Administration) without
+// changing the cards themselves.
+function SettingsSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-4">
+      <p className="text-xs font-semibold text-[#475569] uppercase tracking-wider">{title}</p>
+      {children}
     </div>
   );
 }

@@ -1,21 +1,20 @@
 import Link from "next/link";
 import { CalendarDays, Users, Star, Briefcase, TrendingUp, Zap, ArrowRight } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
+import { getEventDisplayStatus } from "@/lib/event-status";
 
 export interface CurrentEventData {
   id: string;
   name: string;
   status: string;
+  startDate: string | null;
+  endDate: string | null;
   leadsCaptured: number;
   qualifiedLeads: number;
   opportunities: number;
   pipelineValue: number;
   expectedRevenue: number;
 }
-
-const STATUS_VARIANT: Record<string, "green" | "blue" | "gray" | "red"> = {
-  active: "green", upcoming: "blue", completed: "gray", cancelled: "red",
-};
 
 function fmtGBP(n: number) { return `£${n.toLocaleString("en-GB", { maximumFractionDigits: 0 })}`; }
 
@@ -40,7 +39,7 @@ export function CurrentEventCard({ event }: { event: CurrentEventData | null }) 
         <div className="p-4 sm:p-6">
           <div className="flex items-center gap-3 mb-4">
             <p className="text-lg font-bold text-[#0F172A]">{event.name}</p>
-            <Badge variant={STATUS_VARIANT[event.status] ?? "gray"}>{event.status}</Badge>
+            {(() => { const s = getEventDisplayStatus(event); return <Badge variant={s.color}>{s.label}</Badge>; })()}
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
             <Stat icon={Users} label="Leads Captured" value={String(event.leadsCaptured)} color="#0F4C81" bg="#dbeafe" />
